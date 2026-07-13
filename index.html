@@ -1,0 +1,2982 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>具身智能飞行员视觉仪表识别系统 — 技术演示</title>
+<style>
+  /* === RESET & TOKENS === */
+  :root {
+    --bg-deep: #080c12;
+    --bg-base: #0d141c;
+    --bg-raised: #111a24;
+    --bg-overlay: #162231;
+    --text-primary: #e2e8f0;
+    --text-secondary: #8ba0b8;
+    --text-muted: #5a6e84;
+    --border-subtle: #1a2a3a;
+    --border-regular: #253548;
+    --accent-cyan: #00d4aa;
+    --accent-green: #3bcc7d;
+    --accent-amber: #f0a040;
+    --accent-red: #f04650;
+    --accent-blue: #4da6ff;
+    --accent-purple: #9b6bff;
+    --signal-radar: rgba(0, 212, 170, .18);
+    --signal-alert: rgba(240, 70, 80, .16);
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --space-xl: 32px;
+    --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    --transition-fast: 150ms ease;
+    --transition-normal: 300ms ease;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { font-size: 14px; -webkit-font-smoothing: antialiased; }
+
+  body {
+    font-family: var(--font-sans);
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    min-height: 100vh;
+    overflow-x: hidden;
+    line-height: 1.5;
+  }
+
+  /* === LAYOUT === */
+  .app-shell {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    grid-template-rows: 48px 1fr;
+    grid-template-areas:
+      "topbar topbar"
+      "main   side";
+    min-height: 100vh;
+    max-width: 1920px;
+    margin: 0 auto;
+    gap: 1px;
+    background: var(--border-subtle);
+  }
+
+  /* === TOP BAR === */
+  .topbar {
+    grid-area: topbar;
+    background: var(--bg-base);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 var(--space-lg);
+    border-bottom: 1px solid var(--border-subtle);
+    z-index: 10;
+  }
+  .topbar-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+  }
+  .sys-logo {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    font-weight: 700;
+    font-size: .95rem;
+    letter-spacing: .02em;
+    color: var(--accent-cyan);
+  }
+  .sys-logo .logo-mark {
+    width: 28px; height: 28px;
+    border: 2px solid var(--accent-cyan);
+    border-radius: var(--radius-sm);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono); font-size: .75rem;
+  }
+  .sys-badge {
+    font-size: .72rem;
+    padding: 2px 10px;
+    background: var(--bg-overlay);
+    border: 1px solid var(--border-regular);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+  }
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: var(--space-lg);
+  }
+  .sys-clock {
+    font-family: var(--font-mono);
+    font-size: .8rem;
+    color: var(--text-secondary);
+  }
+  .status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: .78rem;
+    color: var(--accent-green);
+  }
+  .status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--accent-green);
+    box-shadow: 0 0 6px var(--accent-green);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; box-shadow: 0 0 4px var(--accent-green); }
+    50% { opacity: .5; box-shadow: 0 0 10px var(--accent-green); }
+  }
+
+  /* === MAIN VIEWPORT === */
+  .main-viewport {
+    grid-area: main;
+    background: var(--bg-base);
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-md);
+    gap: var(--space-md);
+    overflow-y: auto;
+  }
+
+  /* Cockpit View */
+  .cockpit-panel {
+    position: relative;
+    background: var(--bg-deep);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    aspect-ratio: 16/10;
+    min-height: 420px;
+    flex-shrink: 0;
+  }
+  .cockpit-scene {
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .cockpit-canvas {
+    width: 100%; height: 100%;
+    display: block;
+  }
+  .cockpit-overlay {
+    position: absolute;
+    top: var(--space-sm); left: var(--space-sm);
+    font-family: var(--font-mono);
+    font-size: .72rem;
+    color: var(--accent-cyan);
+    opacity: .7;
+    pointer-events: none;
+    text-shadow: 0 0 8px rgba(0,212,170,.5);
+  }
+  .cockpit-label {
+    position: absolute;
+    top: var(--space-sm); right: var(--space-sm);
+    display: flex; align-items: center; gap: 4px;
+    font-size: .75rem; color: var(--accent-green);
+    pointer-events: none;
+  }
+  .cockpit-label .rec-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%; background: var(--accent-red);
+    animation: blink 1s step-end infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* Webcam Preview */
+  .webcam-preview {
+    position: absolute;
+    bottom: 8px; right: 8px;
+    width: 160px; height: 120px;
+    border: 2px solid var(--accent-cyan);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    z-index: 20;
+    background: #000;
+    box-shadow: 0 0 16px rgba(0,212,170,.3);
+    display: none;
+    transition: opacity .3s;
+  }
+  .webcam-preview.active { display: block; }
+  .webcam-preview video {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1); /* Mirror */
+  }
+  .webcam-preview .face-dot {
+    position: absolute;
+    width: 10px; height: 10px;
+    background: var(--accent-cyan);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 8px rgba(0,212,170,.8);
+    pointer-events: none;
+    display: none;
+  }
+  .webcam-preview .face-box {
+    position: absolute;
+    border: 2px solid var(--accent-cyan);
+    border-radius: 4px;
+    pointer-events: none;
+    display: none;
+    box-shadow: 0 0 6px rgba(0,212,170,.4);
+  }
+  .tracking-status {
+    position: absolute;
+    bottom: 8px; left: 8px;
+    font-family: var(--font-mono);
+    font-size: .62rem;
+    color: var(--accent-cyan);
+    pointer-events: none;
+    z-index: 20;
+    opacity: 0;
+    transition: opacity .3s;
+  }
+  .tracking-status.active { opacity: .85; }
+  .tracking-btn {
+    padding: 5px 14px;
+    font-size: .72rem;
+    font-family: var(--font-sans);
+    background: var(--bg-raised);
+    border: 1px solid var(--border-regular);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .tracking-btn:hover { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+  .tracking-btn.enabled {
+    background: rgba(0,212,170,.12);
+    border-color: var(--accent-cyan);
+    color: var(--accent-cyan);
+  }
+  /* Attention Panel */
+  .attention-donut {
+    display: flex; align-items: center; gap: var(--space-md);
+    margin-bottom: var(--space-sm);
+  }
+  .attention-canvas { width: 80px; height: 80px; flex-shrink: 0; }
+  .attention-legend { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+  .attention-legend .al-item { display: flex; align-items: center; gap: 8px; font-size: .7rem; justify-content: space-between; }
+  .attention-legend .al-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .attention-legend .al-val { font-family: var(--font-mono); font-weight: 600; }
+  .inst-attention-list { display: flex; flex-direction: column; gap: 3px; margin-top: var(--space-sm); max-height: 200px; overflow-y: auto; }
+  .inst-attn-row { display: flex; align-items: center; gap: 6px; font-size: .65rem; }
+  .inst-attn-row .ia-name { width: 70px; color: var(--text-secondary); flex-shrink: 0; text-align: right; }
+  .inst-attn-row .ia-bar-wrap { flex: 1; height: 5px; background: var(--bg-deep); border-radius: 2px; overflow: hidden; }
+  .inst-attn-row .ia-bar { height: 100%; border-radius: 2px; transition: width .5s ease; }
+  .inst-attn-row .ia-pct { width: 36px; font-family: var(--font-mono); color: var(--text-muted); text-align: right; flex-shrink: 0; }
+  .inst-attn-row .ia-since { width: 44px; font-family: var(--font-mono); font-size: .6rem; color: var(--text-muted); text-align: right; flex-shrink: 0; }
+  .inst-attn-row.hot .ia-bar { background: var(--accent-cyan); }
+  .inst-attn-row.hot .ia-pct { color: var(--accent-cyan); }
+  .inst-attn-row.warn .ia-bar { background: var(--accent-amber); }
+  .inst-attn-row.warn .ia-pct { color: var(--accent-amber); }
+
+  .tracking-btn.enabled .track-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    box-shadow: 0 0 6px var(--accent-cyan);
+    animation: pulse-dot 1.5s ease-in-out infinite;
+  }
+  .tracking-btn .track-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--text-muted);
+  }
+  .calibrate-hint {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0,0,0,.85);
+    border: 1px solid var(--accent-amber);
+    border-radius: var(--radius-md);
+    padding: 12px 20px;
+    font-size: .78rem;
+    color: var(--accent-amber);
+    font-family: var(--font-sans);
+    z-index: 25;
+    pointer-events: none;
+    display: none;
+    text-align: center;
+  }
+  .calibrate-hint.show { display: block; animation: fadeInOut 3s forwards; }
+  @keyframes fadeInOut {
+    0% { opacity: 0; } 15% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; }
+  }
+
+  /* Detection Overlay Boxes */
+  .det-box {
+    position: absolute;
+    border: 1px solid var(--accent-cyan);
+    border-radius: 2px;
+    pointer-events: none;
+    animation: box-appear .4s ease-out;
+  }
+  .det-box::after {
+    content: attr(data-label);
+    position: absolute;
+    top: -18px; left: -1px;
+    background: var(--accent-cyan);
+    color: var(--bg-deep);
+    font-family: var(--font-mono);
+    font-size: .62rem;
+    padding: 1px 6px;
+    white-space: nowrap;
+    border-radius: 2px 2px 2px 0;
+  }
+  .det-box.confident { border-color: var(--accent-green); }
+  .det-box.confident::after { background: var(--accent-green); }
+  @keyframes box-appear {
+    from { opacity: 0; transform: scale(.95); }
+  }
+
+  /* Bottom Row */
+  .metrics-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-md);
+    flex-shrink: 0;
+  }
+
+  /* === METRIC CARD === */
+  .metric-card {
+    background: var(--bg-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: var(--space-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+  }
+  .metric-card .mc-label {
+    font-size: .7rem;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--text-muted);
+  }
+  .metric-card .mc-value {
+    font-family: var(--font-mono);
+    font-size: 1.6rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .metric-card .mc-sub {
+    font-size: .72rem;
+    color: var(--text-secondary);
+  }
+  .mc-value.accent-green { color: var(--accent-green); }
+  .mc-value.accent-cyan { color: var(--accent-cyan); }
+  .mc-value.accent-amber { color: var(--accent-amber); }
+  .mc-value.accent-blue { color: var(--accent-blue); }
+
+  /* === SIDE PANEL === */
+  .side-panel {
+    grid-area: side;
+    background: var(--bg-base);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    padding: var(--space-md);
+    gap: var(--space-md);
+  }
+
+  .panel-section {
+    background: var(--bg-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: var(--space-md);
+  }
+  .panel-section .ps-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: var(--space-md);
+  }
+  .panel-section .ps-title {
+    font-size: .78rem;
+    font-weight: 600;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+  .panel-section .ps-badge {
+    font-size: .65rem;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+  }
+  .ps-badge.online { background: rgba(59,204,125,.15); color: var(--accent-green); }
+  .ps-badge.warning { background: rgba(240,160,64,.15); color: var(--accent-amber); }
+
+  /* Perception Regions */
+  .region-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-sm);
+  }
+  .region-item {
+    background: var(--bg-overlay);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: var(--space-sm);
+    text-align: center;
+    transition: border-color var(--transition-fast);
+  }
+  .region-item.active { border-color: var(--accent-cyan); }
+  .region-item .ri-icon {
+    font-size: 1.2rem; display: block; margin-bottom: 4px;
+  }
+  .region-item .ri-name {
+    font-size: .65rem; color: var(--text-secondary); display: block; margin-bottom: 2px;
+  }
+  .region-item .ri-stat {
+    font-family: var(--font-mono); font-size: .8rem; font-weight: 600; color: var(--accent-cyan);
+  }
+
+  /* Robot List */
+  .robot-list {
+    display: flex; flex-direction: column; gap: var(--space-sm);
+  }
+  .robot-item {
+    display: flex; align-items: center; gap: var(--space-sm);
+    background: var(--bg-overlay);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: var(--space-sm) var(--space-md);
+  }
+  .robot-item .ro-icon {
+    width: 32px; height: 32px;
+    background: var(--bg-deep);
+    border: 1px solid var(--border-regular);
+    border-radius: var(--radius-sm);
+    display: flex; align-items: center; justify-content: center;
+    font-size: .8rem; flex-shrink: 0;
+  }
+  .robot-item .ro-info { flex: 1; min-width: 0; }
+  .robot-item .ro-name { font-size: .75rem; font-weight: 600; }
+  .robot-item .ro-status { font-size: .65rem; color: var(--text-muted); }
+  .robot-item .ro-metric { font-family: var(--font-mono); font-size: .7rem; color: var(--accent-cyan); }
+
+  /* Environment Robustness Bar */
+  .env-list { display: flex; flex-direction: column; gap: var(--space-sm); }
+  .env-item { display: flex; align-items: center; gap: var(--space-sm); }
+  .env-item .ev-label {
+    width: 60px; font-size: .7rem; color: var(--text-secondary); flex-shrink: 0;
+  }
+  .env-item .ev-bar-wrap {
+    flex: 1; height: 6px; background: var(--bg-deep);
+    border-radius: 3px; overflow: hidden;
+  }
+  .env-item .ev-bar {
+    height: 100%; border-radius: 3px; transition: width 1s ease;
+  }
+  .ev-bar.excellent { background: var(--accent-cyan); }
+  .ev-bar.good { background: var(--accent-green); }
+  .ev-bar.moderate { background: var(--accent-amber); }
+  .env-item .ev-val {
+    width: 36px; font-family: var(--font-mono); font-size: .7rem;
+    color: var(--text-primary); text-align: right;
+  }
+
+  /* Latency Timeline */
+  .latency-timeline { display: flex; flex-direction: column; gap: var(--space-xs); }
+  .latency-row { display: flex; align-items: center; gap: var(--space-sm); }
+  .latency-row .lr-label { font-size: .68rem; color: var(--text-secondary); width: 70px; flex-shrink: 0; }
+  .latency-row .lr-bar-wrap { flex: 1; height: 4px; background: var(--bg-deep); border-radius: 2px; overflow: hidden; }
+  .latency-row .lr-bar { height: 100%; border-radius: 2px; background: var(--accent-cyan); }
+  .latency-row .lr-val { font-family: var(--font-mono); font-size: .68rem; width: 48px; text-align: right; color: var(--text-primary); }
+
+  /* Scene Selector */
+  .scene-tabs {
+    display: flex; gap: var(--space-xs);
+    margin-bottom: var(--space-sm);
+  }
+  .scene-tab {
+    padding: 5px 14px;
+    font-size: .72rem;
+    background: var(--bg-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    font-family: var(--font-sans);
+  }
+  .scene-tab:hover { border-color: var(--border-regular); color: var(--text-primary); }
+  .scene-tab.active { background: var(--bg-overlay); border-color: var(--accent-cyan); color: var(--accent-cyan); }
+
+  /* Chart Sparkline */
+  .spark-box {
+    background: var(--bg-deep);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: var(--space-sm);
+    margin-top: var(--space-sm);
+  }
+  .spark-canvas { width: 100%; height: 70px; display: block; }
+
+  /* === RESPONSIVE === */
+  @media (max-width: 1200px) {
+    .app-shell {
+      grid-template-columns: 1fr;
+      grid-template-areas: "topbar" "main" "side";
+    }
+    .side-panel { display: grid; grid-template-columns: repeat(2, 1fr); }
+    .metrics-row { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 768px) {
+    .app-shell { grid-template-rows: auto 1fr auto; }
+    .cockpit-panel { aspect-ratio: 4/3; min-height: 260px; }
+    .metrics-row { grid-template-columns: 1fr 1fr; gap: var(--space-sm); }
+    .side-panel { grid-template-columns: 1fr; }
+    .topbar { padding: 0 var(--space-md); }
+    .region-grid { grid-template-columns: repeat(3, 1fr); }
+    .sys-badge { display: none; }
+  }
+  @media (max-width: 480px) {
+    .metrics-row { grid-template-columns: 1fr; }
+    .cockpit-panel { aspect-ratio: 1/1; min-height: 220px; }
+    .topbar-right .sys-clock { display: none; }
+  }
+
+  /* === FOCUS & ACCESSIBILITY === */
+  .scene-tab:focus-visible {
+    outline: 2px solid var(--accent-cyan);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; }
+    .det-box { animation: none; }
+  }
+
+  /* === TRAINING TASK PANEL === */
+  .training-row {
+    display: flex; align-items: center; gap: var(--space-md);
+    background: var(--bg-raised); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md); padding: var(--space-sm) var(--space-md);
+    flex-shrink: 0;
+  }
+  .training-label {
+    font-size: .68rem; color: var(--text-muted); text-transform: uppercase;
+    letter-spacing: .06em; margin-right: var(--space-xs);
+  }
+  .task-btn {
+    padding: 5px 12px; font-size: .7rem; font-family: var(--font-sans);
+    background: var(--bg-deep); border: 1px solid var(--border-regular);
+    border-radius: var(--radius-sm); color: var(--text-secondary);
+    cursor: pointer; transition: all var(--transition-fast); white-space: nowrap;
+  }
+  .task-btn:hover { border-color: var(--accent-blue); color: var(--accent-blue); }
+  .task-btn.active {
+    background: rgba(77,166,255,.12); border-color: var(--accent-blue);
+    color: var(--accent-blue);
+  }
+  .training-status {
+    flex: 1; display: flex; align-items: center; gap: var(--space-sm);
+    font-size: .72rem; font-family: var(--font-mono); color: var(--accent-cyan);
+    min-width: 0; margin-left: var(--space-md);
+  }
+  .ts-score {
+    font-weight: 700; color: var(--accent-green); white-space: nowrap;
+  }
+  .ts-error {
+    color: var(--accent-amber); white-space: nowrap;
+  }
+  .ts-bar-wrap {
+    flex: 1; height: 8px; background: var(--bg-deep); border-radius: 4px;
+    overflow: hidden; min-width: 60px;
+  }
+  .ts-bar {
+    height: 100%; border-radius: 4px; transition: width .3s ease, background .3s ease;
+    background: var(--accent-green);
+  }
+  .ts-bar.warn { background: var(--accent-amber); }
+  .ts-bar.danger { background: var(--accent-red); }
+  .throttle-indicator {
+    display: flex; align-items: center; gap: 6px;
+    font-family: var(--font-mono); font-size: .65rem;
+    color: var(--accent-cyan); margin-left: auto;
+    padding: 3px 10px; background: var(--bg-deep);
+    border-radius: var(--radius-sm); white-space: nowrap;
+  }
+  .thr-bar {
+    width: 40px; height: 6px; background: var(--bg-overlay);
+    border-radius: 3px; overflow: hidden;
+  }
+  .thr-fill {
+    height: 100%; border-radius: 3px; background: var(--accent-cyan);
+    transition: width .3s ease;
+  }
+  .task-feedback-overlay {
+    position: absolute; top: 12px; left: 50%;
+    transform: translateX(-50%); z-index: 22; pointer-events: none;
+    font-family: var(--font-mono); font-size: 1.1rem; font-weight: 700;
+    text-align: center; display: none;
+    padding: 8px 24px; border-radius: var(--radius-md);
+    letter-spacing: .03em;
+  }
+  .task-feedback-overlay.show { display: block; animation: fadeInOutMsg 2.5s forwards; }
+  .task-feedback-overlay.pass { color: #00ff88; background: rgba(0,255,136,.1); border: 1px solid rgba(0,255,136,.4); }
+  .task-feedback-overlay.fail { color: #ff4466; background: rgba(255,68,102,.1); border: 1px solid rgba(255,68,102,.4); }
+  @keyframes fadeInOutMsg {
+    0% { opacity: 0; transform: translateX(-50%) translateY(10px); }
+    15% { opacity: 1; transform: translateX(-50%) translateY(0); }
+    80% { opacity: 1; }
+    100% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+  }
+  @media (max-width: 1200px) {
+    .training-row { flex-wrap: wrap; gap: var(--space-sm); }
+    .training-status { margin-left: 0; width: 100%; }
+  }
+
+  /* === COACH CORRECTION REMINDER === */
+  .coach-reminder {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0,0,0,0.92);
+    border: 2px solid var(--accent-amber);
+    border-radius: var(--radius-md);
+    padding: 14px 24px; z-index: 30;
+    pointer-events: none; display: none;
+    text-align: center; max-width: 340px;
+  }
+  .coach-reminder.show { display: block; animation: coachShakeIn 0.5s ease-out; }
+  .coach-reminder .cr-icon { font-size: 1.6rem; display: block; margin-bottom: 6px; }
+  .coach-reminder .cr-msg { font-size: .84rem; font-weight: 700; color: var(--accent-amber); line-height: 1.4; }
+  .coach-reminder .cr-sub { font-size: .7rem; color: var(--text-secondary); margin-top: 6px; }
+  .coach-reminder .cr-action { font-size: .68rem; color: var(--accent-cyan); margin-top: 4px; }
+  @keyframes coachShakeIn {
+    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.85); }
+    40% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); }
+    60% { opacity: 1; transform: translate(-50%, -50%) scale(0.97); }
+    100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  }
+
+  /* === INSTRUMENT FADE OVERLAY === */
+  .inst-fade-overlay {
+    position: absolute; top: 45%; left: 0; right: 0; bottom: 0;
+    background: rgba(8,12,18,0); pointer-events: none; z-index: 15;
+    transition: background 1.5s ease;
+    border-radius: 0 0 var(--radius-md) var(--radius-md);
+  }
+  .inst-fade-label {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    font-family: var(--font-mono); font-size: .9rem; font-weight: 700;
+    color: rgba(240,160,64,0); pointer-events: none; z-index: 16;
+    transition: color 1.5s ease; white-space: nowrap; text-align: center;
+  }
+
+  /* === ATTENTION SCORE BADGE === */
+  .attn-score-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 3px;
+    font-family: var(--font-mono); font-size: .65rem;
+    margin-left: 4px; white-space: nowrap;
+  }
+  .attn-score-badge.good { background: rgba(59,204,125,.15); color: var(--accent-green); border: 1px solid rgba(59,204,125,.25); }
+  .attn-score-badge.warn { background: rgba(240,160,64,.15); color: var(--accent-amber); border: 1px solid rgba(240,160,64,.25); }
+  .attn-score-badge.bad { background: rgba(240,70,80,.15); color: var(--accent-red); border: 1px solid rgba(240,70,80,.25); }
+
+  /* External view training special state */
+  .task-btn.ext-view:hover { border-color: var(--accent-purple); color: var(--accent-purple); }
+  .task-btn.ext-view.active { background: rgba(155,107,255,.12); border-color: var(--accent-purple); color: var(--accent-purple); }
+
+  /* Freeze mode text for external training */
+  .inst-fade-warning {
+    display: none; position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+    z-index: 17; pointer-events: none;
+    font-family: var(--font-mono); font-size: .75rem; font-weight: 700;
+    color: var(--accent-amber); text-shadow: 0 0 10px rgba(240,160,64,.4);
+    letter-spacing: .04em;
+  }
+  .inst-fade-warning.show { display: block; }
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+
+  <!-- ======== TOP BAR ======== -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="sys-logo">
+        <span class="logo-mark">EI</span>
+        具身智能飞行员视觉系统
+      </div>
+      <span class="sys-badge">Embodied Pilot Vision System v4.0</span>
+    </div>
+    <div class="topbar-right">
+      <button class="tracking-btn" id="trackingBtn" title="启用头部追踪控制飞机姿态">
+        <span class="track-dot"></span>头部追踪
+      </button>
+      <span class="status-indicator"><span class="status-dot"></span>系统运行中</span>
+      <span class="sys-clock" id="sysClock">--</span>
+    </div>
+  </header>
+
+  <!-- ======== MAIN VIEWPORT ======== -->
+  <main class="main-viewport">
+
+    <!-- Scene Tabs -->
+    <div class="scene-tabs" role="tablist">
+      <button class="scene-tab active" data-scene="day" role="tab">白昼巡航</button>
+      <button class="scene-tab" data-scene="night" role="tab">夜间飞行</button>
+      <button class="scene-tab" data-scene="turbulence" role="tab">湍流环境</button>
+      <button class="scene-tab" data-scene="lowvis" role="tab">低能见度</button>
+    </div>
+
+    <!-- Training Tasks -->
+    <div class="training-row" id="trainingRow">
+      <span class="training-label">训练任务</span>
+      <button class="task-btn active" data-task="none">自由飞行</button>
+      <button class="task-btn" data-task="altitude">保持高度</button>
+      <button class="task-btn" data-task="turn">标准转弯</button>
+      <button class="task-btn" data-task="approach">仪表进近</button>
+      <button class="task-btn ext-view" data-task="external">外视强化</button>
+      <div class="training-status" id="trainingStatus">自由飞行模式 · W/S 油门 · 头部控制姿态</div>
+      <div class="throttle-indicator" id="throttleInd">
+        <span>油门</span><div class="thr-bar"><div class="thr-fill" id="thrFill" style="width:70%"></div></div><span id="thrPct">70%</span>
+      </div>
+    </div>
+
+    <!-- Cockpit View -->
+    <div class="cockpit-panel" id="cockpitPanel">
+      <div class="cockpit-overlay">EI-VISION :: 实时采集 :: 30FPS :: 1920×1080</div>
+      <div class="cockpit-label"><span class="rec-dot"></span>REC</div>
+      <div class="cockpit-scene" id="cockpitScene">
+        <canvas class="cockpit-canvas" id="cockpitCanvas"></canvas>
+        <!-- Detection boxes injected by JS -->
+      </div>
+      <div class="webcam-preview" id="webcamPreview">
+        <video id="webcamVideo" autoplay playsinline></video>
+        <div class="face-box" id="faceBox"></div>
+        <div class="face-dot" id="faceDot"></div>
+      </div>
+      <div class="tracking-status" id="trackingStatus">HEAD TRACKING</div>
+      <div class="calibrate-hint" id="calibrateHint">校准中… 请正视摄像头保持不动</div>
+      <div class="task-feedback-overlay" id="taskFeedback"></div>
+      <div class="coach-reminder" id="coachReminder">
+        <span class="cr-icon">!</span>
+        <span class="cr-msg" id="coachMsg"></span>
+        <span class="cr-sub" id="coachSub"></span>
+        <span class="cr-action" id="coachAction"></span>
+      </div>
+      <div class="inst-fade-overlay" id="instFadeOverlay"></div>
+      <div class="inst-fade-label" id="instFadeLabel">仪表渐隐中</div>
+      <div class="inst-fade-warning" id="instFadeWarning">依赖舱外视野</div>
+    </div>
+
+    <!-- Key Metrics Row -->
+    <div class="metrics-row">
+      <div class="metric-card">
+        <div class="mc-label">视觉采集延迟</div>
+        <div class="mc-value accent-green" id="metricLatency">22ms</div>
+        <div class="mc-sub">端到端采集-处理全链路</div>
+      </div>
+      <div class="metric-card">
+        <div class="mc-label">仪表识别精度</div>
+        <div class="mc-value accent-cyan" id="metricAccuracy">99.3%</div>
+        <div class="mc-sub">mAP@0.5 多类型仪表</div>
+      </div>
+      <div class="metric-card">
+        <div class="mc-label">多区域并发</div>
+        <div class="mc-value accent-blue" id="metricRegions">6</div>
+        <div class="mc-sub">同步感知区域数</div>
+      </div>
+      <div class="metric-card">
+        <div class="mc-label">环境鲁棒性</div>
+        <div class="mc-value accent-amber" id="metricRobustness">98.7%</div>
+        <div class="mc-sub">复杂光照/振动/遮挡</div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ======== SIDE PANEL ======== -->
+  <aside class="side-panel">
+
+    <!-- Multi-Region Perception -->
+    <div class="panel-section">
+      <div class="ps-header">
+        <span class="ps-title">多区域感知</span>
+        <span class="ps-badge online">全区域在线</span>
+      </div>
+      <div class="region-grid" id="regionGrid">
+        <div class="region-item active">
+          <span class="ri-icon">🖥️</span>
+          <span class="ri-name">主仪表板</span>
+          <span class="ri-stat">23Hz</span>
+        </div>
+        <div class="region-item active">
+          <span class="ri-icon">📡</span>
+          <span class="ri-name">顶置面板</span>
+          <span class="ri-stat">15Hz</span>
+        </div>
+        <div class="region-item">
+          <span class="ri-icon">🕹️</span>
+          <span class="ri-name">中央操控台</span>
+          <span class="ri-stat">18Hz</span>
+        </div>
+        <div class="region-item active">
+          <span class="ri-icon">📊</span>
+          <span class="ri-name">发动机仪表</span>
+          <span class="ri-stat">20Hz</span>
+        </div>
+        <div class="region-item">
+          <span class="ri-icon">🧭</span>
+          <span class="ri-name">导航显示器</span>
+          <span class="ri-stat">22Hz</span>
+        </div>
+        <div class="region-item active">
+          <span class="ri-icon">⚠️</span>
+          <span class="ri-name">告警面板</span>
+          <span class="ri-stat">30Hz</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Robot Deployment -->
+    <div class="panel-section">
+      <div class="ps-header">
+        <span class="ps-title">机器人部署状态</span>
+        <span class="ps-badge online">3/3 在线</span>
+      </div>
+      <div class="robot-list" id="robotList">
+        <div class="robot-item">
+          <div class="ro-icon">🤖</div>
+          <div class="ro-info">
+            <div class="ro-name">视觉采集单元 A</div>
+            <div class="ro-status">座舱前部 · 云台就绪</div>
+          </div>
+          <div class="ro-metric">4.2ms</div>
+        </div>
+        <div class="robot-item">
+          <div class="ro-icon">🤖</div>
+          <div class="ro-info">
+            <div class="ro-name">视觉采集单元 B</div>
+            <div class="ro-status">侧面板 · 广角模式</div>
+          </div>
+          <div class="ro-metric">5.1ms</div>
+        </div>
+        <div class="robot-item">
+          <div class="ro-icon">🦾</div>
+          <div class="ro-info">
+            <div class="ro-name">机械臂-末端执行器</div>
+            <div class="ro-status">精确操作 · 6-DOF</div>
+          </div>
+          <div class="ro-metric">8.3ms</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Environment Robustness -->
+    <div class="panel-section">
+      <div class="ps-header">
+        <span class="ps-title">环境鲁棒性评估</span>
+        <span class="ps-badge warning">当前：复杂光照</span>
+      </div>
+      <div class="env-list" id="envList">
+        <div class="env-item">
+          <span class="ev-label">正常光照</span>
+          <div class="ev-bar-wrap"><div class="ev-bar excellent" style="width:99.5%"></div></div>
+          <span class="ev-val">99.5%</span>
+        </div>
+        <div class="env-item">
+          <span class="ev-label">低光照</span>
+          <div class="ev-bar-wrap"><div class="ev-bar excellent" style="width:98.2%"></div></div>
+          <span class="ev-val">98.2%</span>
+        </div>
+        <div class="env-item">
+          <span class="ev-label">振动环境</span>
+          <div class="ev-bar-wrap"><div class="ev-bar good" style="width:97.5%"></div></div>
+          <span class="ev-val">97.5%</span>
+        </div>
+        <div class="env-item">
+          <span class="ev-label">部分遮挡</span>
+          <div class="ev-bar-wrap"><div class="ev-bar good" style="width:96.8%"></div></div>
+          <span class="ev-val">96.8%</span>
+        </div>
+        <div class="env-item">
+          <span class="ev-label">强反光</span>
+          <div class="ev-bar-wrap"><div class="ev-bar moderate" style="width:94.1%"></div></div>
+          <span class="ev-val">94.1%</span>
+        </div>
+        <div class="env-item">
+          <span class="ev-label">烟雾/雾霾</span>
+          <div class="ev-bar-wrap"><div class="ev-bar moderate" style="width:91.7%"></div></div>
+          <span class="ev-val">91.7%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Attention Analysis -->
+    <div class="panel-section" id="attentionPanel">
+      <div class="ps-header">
+        <span class="ps-title">注意力分析</span>
+        <span class="ps-badge online" id="attnBadge">追踪中</span>
+      </div>
+      <div class="attention-donut">
+        <canvas class="attention-canvas" id="attnDonut"></canvas>
+        <div class="attention-legend">
+          <div class="al-item">
+            <span class="al-dot" style="background:var(--accent-cyan)"></span>
+            <span>座舱外视野</span>
+            <span class="al-val" id="attnOutside" style="color:var(--accent-cyan)">60%</span>
+          </div>
+          <div class="al-item">
+            <span class="al-dot" style="background:var(--accent-green)"></span>
+            <span>座舱内仪表</span>
+            <span class="al-val" id="attnInside" style="color:var(--accent-green)">40%</span>
+          </div>
+        </div>
+      </div>
+      <div class="inst-attention-list" id="instAttnList"></div>
+    </div>
+
+    <!-- Latency Breakdown -->
+    <div class="panel-section">
+      <div class="ps-header">
+        <span class="ps-title">全链路延迟分析</span>
+      </div>
+      <div class="latency-timeline">
+        <div class="latency-row">
+          <span class="lr-label">图像采集</span>
+          <div class="lr-bar-wrap"><div class="lr-bar" style="width:12%"></div></div>
+          <span class="lr-val">2.8ms</span>
+        </div>
+        <div class="latency-row">
+          <span class="lr-label">预处理</span>
+          <div class="lr-bar-wrap"><div class="lr-bar" style="width:17%"></div></div>
+          <span class="lr-val">3.9ms</span>
+        </div>
+        <div class="latency-row">
+          <span class="lr-label">仪表检测</span>
+          <div class="lr-bar-wrap"><div class="lr-bar" style="width:31%"></div></div>
+          <span class="lr-val">7.2ms</span>
+        </div>
+        <div class="latency-row">
+          <span class="lr-label">读数识别</span>
+          <div class="lr-bar-wrap"><div class="lr-bar" style="width:23%"></div></div>
+          <span class="lr-val">5.4ms</span>
+        </div>
+        <div class="latency-row">
+          <span class="lr-label">融合输出</span>
+          <div class="lr-bar-wrap"><div class="lr-bar" style="width:17%"></div></div>
+          <span class="lr-val">3.9ms</span>
+        </div>
+      </div>
+      <div class="spark-box">
+        <canvas class="spark-canvas" id="latencySpark"></canvas>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script>
+  (function() {
+    /* ============ UTILS ============ */
+    const $ = (s, p) => (p || document).querySelector(s);
+    const $$ = (s, p) => [...(p || document).querySelectorAll(s)];
+    const rand = (min, max) => min + Math.random() * (max - min);
+    const randInt = (min, max) => Math.floor(rand(min, max + 1));
+
+    /* ============ CLOCK ============ */
+    function updateClock() {
+      const now = new Date();
+      $('#sysClock').textContent =
+        now.toLocaleTimeString('zh-CN', { hour12: false }) + ' UTC+8';
+    }
+    updateClock();
+    setInterval(updateClock, 1000);
+
+    /* ============ SCENE TABS ============ */
+    const scenes = {
+      day:    { skyTop: '#3b7dd8', skyBottom: '#8ec5f2', cloudAlpha: 0.9, instBrightness: 1.0, detOpacity: 1.0, hazeAlpha: 0 },
+      night:  { skyTop: '#070b1a', skyBottom: '#1a2850', cloudAlpha: 0.15, instBrightness: 0.7, detOpacity: 0.85, hazeAlpha: 0.3 },
+      turbulence: { skyTop: '#4a6080', skyBottom: '#8a9fc0', cloudAlpha: 0.7, instBrightness: 0.85, detOpacity: 0.8, hazeAlpha: 0.15 },
+      lowvis: { skyTop: '#8a9098', skyBottom: '#b0b5bd', cloudAlpha: 0.2, instBrightness: 0.5, detOpacity: 0.7, hazeAlpha: 0.6 },
+    };
+    let currentScene = 'day';
+
+    /* ============ HEAD TRACKING SYSTEM ============ */
+    let headTracking = false;
+    let trackCanvas, trackCtx;
+    let faceX = 0.5, faceY = 0.5;       // normalized face center [0-1]
+    let targetFaceX = 0.5, targetFaceY = 0.5;
+    let faceSize = 0;                     // normalized face size
+    let faceDetected = false;
+    let neutralX = 0.5, neutralY = 0.5;   // calibrated neutral position
+    let isCalibrated = false;
+    let calibrating = false;
+    let calibrateFrames = 0;
+    let targetPitch = 5, targetRoll = 2;  // smoothed target attitude
+    let targetHeading = 245;
+
+    /* ============ FLIGHT DYNAMICS MODEL ============ */
+    // Simplified C172-like flight state — all instruments derive from these
+    const flightState = {
+      pitch: 5, roll: 2, heading: 245,
+      airspeed: 280, altitude: 28500, verticalSpeed: 500,
+      throttle: 0.7, turnRate: 0,
+      N1: 92.5, EGT: 720, fuel: 16400, oilPressure: 65, fuelFlow: 1400,
+    };
+    const DEFAULT_FLIGHT = { ...flightState };
+    const DT = 1 / 24; // ~24fps
+
+    function updateFlightModel(dt) {
+      const st = flightState;
+      const pitchRad = st.pitch * Math.PI / 180;
+      const rollRad = st.roll * Math.PI / 180;
+      const speedMS = Math.max(st.airspeed * 0.514, 15); // KT → m/s minimum 15
+
+      // 1. Turn rate from bank angle (coordinated turn)
+      const trRad = Math.tan(rollRad) * 9.81 / speedMS;
+      st.turnRate = trRad * 180 / Math.PI;
+      st.turnRate = Math.max(-6, Math.min(6, st.turnRate));
+      st.heading += st.turnRate * dt;
+      if (st.heading < 0) st.heading += 360;
+      if (st.heading >= 360) st.heading -= 360;
+
+      // 2. Vertical speed from pitch and airspeed
+      const vsTarget = Math.sin(pitchRad) * st.airspeed * 101.27;
+      st.verticalSpeed += (vsTarget - st.verticalSpeed) * dt * 2.5;
+      st.altitude += st.verticalSpeed / 60 * dt;
+      st.altitude = Math.max(-2000, Math.min(50000, st.altitude));
+
+      // 3. Airspeed: energy exchange model (thrust, drag, gravity component on flight path)
+      const thrustAccel = st.throttle * 8.0;              // max throttle accel ~8 m/s²
+      const dragAccel = (st.airspeed / 400) ** 2 * 3.0;   // parasitic + induced drag
+      const gravAccel = Math.sin(pitchRad) * 9.81;         // gravity along flight path
+      const netAccel = thrustAccel - dragAccel - gravAccel;
+      st.airspeed += netAccel * dt * 1.9438; // m/s → KT
+      st.airspeed = Math.max(40, Math.min(400, st.airspeed));
+
+      // 4. Engine parameters follow throttle
+      const n1Target = 22 + st.throttle * 88;
+      st.N1 += (n1Target - st.N1) * dt * 2.5;
+      st.EGT += (380 + st.throttle * 520 - st.EGT) * dt * 2.0;
+      st.oilPressure += (18 + st.throttle * 72 - st.oilPressure) * dt * 2.5;
+
+      // 5. Fuel consumption
+      st.fuelFlow = 200 + st.throttle * 1800;
+      st.fuel -= st.fuelFlow / 3600 * dt;
+      st.fuel = Math.max(0, st.fuel);
+
+      // 6. Turbulence perturbation
+      if (currentScene === 'turbulence') {
+        st.pitch += (Math.random() - 0.5) * 0.5;
+        st.roll += (Math.random() - 0.5) * 0.6;
+        st.airspeed += (Math.random() - 0.5) * 0.8;
+        st.verticalSpeed += (Math.random() - 0.5) * 150;
+      }
+    }
+
+    // Sync instruments from flight state
+    function syncInstruments() {
+      const st = flightState;
+      const ai = instruments.find(i => i.id === 'ai');
+      const hsi = instruments.find(i => i.id === 'hsi');
+      const asi = instruments.find(i => i.id === 'asi');
+      const alt = instruments.find(i => i.id === 'alt');
+      const vsi = instruments.find(i => i.id === 'vsi');
+      const tc = instruments.find(i => i.id === 'tc');
+      const eng1 = instruments.find(i => i.id === 'eng1');
+      const eng2 = instruments.find(i => i.id === 'eng2');
+      const fuel = instruments.find(i => i.id === 'fuel');
+      const oil = instruments.find(i => i.id === 'oil');
+
+      if (ai) { ai.val = st.pitch; ai.val2 = st.roll; }
+      if (hsi) hsi.val = st.heading;
+      if (asi) asi.val = st.airspeed;
+      if (alt) alt.val = st.altitude;
+      if (vsi) vsi.val = st.verticalSpeed;
+      if (tc) tc.val = Math.abs(st.turnRate / 3); // normalized to 0-4 scale
+      if (eng1) eng1.val = st.N1;
+      if (eng2) eng2.val = st.EGT;
+      if (fuel) fuel.val = st.fuel;
+      if (oil) oil.val = st.oilPressure;
+    }
+
+    /* ============ TRAINING TASKS ============ */
+    let activeTraining = 'none'; // 'none' | 'altitude' | 'turn' | 'approach'
+    let taskState = {
+      startTime: 0, passCount: 0, failCount: 0,
+      score: 0, phase: 'idle', // idle | active | done
+      // altitude task
+      targetAlt: 0, altTolerance: 200, altPhaseTime: 0, altPhaseTotal: 15,
+      // turn task
+      turnStartHeading: 0, turnTargetHeading: 0, turnPhaseTime: 0,
+      turnGoodTime: 0, turnTotalGood: 0, turnTotal: 0,
+      // approach task
+      appStartAlt: 0, appTargetVS: 0, appDistance: 0, appTolerance: 150, appPhaseTime: 0,
+    };
+
+    function startTraining(task) {
+      activeTraining = task;
+      resetTaskState(task);
+      $$('.task-btn').forEach(b => b.classList.remove('active'));
+      const btn = $(`.task-btn[data-task="${task}"]`);
+      if (btn) btn.classList.add('active');
+    }
+
+    function resetTaskState(task) {
+      const ts = taskState;
+      ts.startTime = Date.now();
+      ts.passCount = 0; ts.failCount = 0; ts.score = 0;
+      ts.phase = task === 'none' ? 'idle' : 'active';
+      ts.altPhaseTime = 0; ts.altPhaseTotal = 15;
+      ts.turnStartHeading = 0; ts.turnTargetHeading = 0;
+      ts.turnPhaseTime = 0; ts.turnGoodTime = 0; ts.turnTotalGood = 0; ts.turnTotal = 0;
+      ts.appPhaseTime = 0;
+
+      if (task === 'altitude') {
+        ts.targetAlt = Math.round(flightState.altitude + (Math.random() - 0.5) * 1000);
+        ts.targetAlt = Math.round(ts.targetAlt / 100) * 100; // round to nearest 100
+        ts.altPhaseTime = 0;
+      }
+      if (task === 'turn') {
+        ts.turnStartHeading = flightState.heading;
+        ts.turnTargetHeading = (ts.turnStartHeading + 90) % 360;
+        ts.turnPhaseTime = 0; ts.turnGoodTime = 0;
+        ts.turnTotalGood = 0; ts.turnTotal = 0;
+      }
+      if (task === 'approach') {
+        ts.appStartAlt = Math.max(2000, flightState.altitude);
+        ts.appTargetVS = -500; // 3° glide at typical approach speed
+        ts.appDistance = ts.appStartAlt / Math.tan(3 * Math.PI / 180) / 6076; // NM
+        ts.appPhaseTime = 0;
+        // Reset aircraft to approach starting altitude
+        flightState.altitude = ts.appStartAlt;
+        flightState.verticalSpeed = ts.appTargetVS;
+      }
+      if (task === 'none') {
+        showFeedbackMsg('自由飞行模式', '');
+        instrumentFadeLevel = 0;
+        extViewPhase = 'idle';
+        const fadeEl = $('#instFadeOverlay');
+        const fadeWarning = $('#instFadeWarning');
+        if (fadeEl) fadeEl.style.background = 'rgba(8,12,18,0)';
+        if (fadeWarning) fadeWarning.className = 'inst-fade-warning';
+      }
+      if (task === 'external') {
+        resetExternalTraining();
+      }
+    }
+
+    function updateTraining() {
+      // Always update throttle display
+      const thrPct = Math.round(flightState.throttle * 100);
+      $('#thrPct').textContent = thrPct + '%';
+      $('#thrFill').style.width = thrPct + '%';
+
+      // Calculate attention quality for training integration
+      const attnScore = getAttentionQuality();
+      attentionBoost = attnScore;
+      // Attention multiplier: -30 -> 0.4x, 0 -> 1.0x, +30 -> 1.6x
+      const attnMult = 1.0 + attnScore / 75;
+
+      // === EXTERNAL VIEW TRAINING MODE ===
+      if (activeTraining === 'external') {
+        updateExternalTraining(attnMult);
+        return;
+      }
+
+      // Reset instrument fade for non-external modes
+      if (instrumentFadeLevel > 0.01) {
+        instrumentFadeLevel *= 0.85;
+        const fadeEl = $('#instFadeOverlay');
+        const fadeLabel = $('#instFadeLabel');
+        const fadeWarning = $('#instFadeWarning');
+        if (fadeEl) fadeEl.style.background = `rgba(8,12,18,${instrumentFadeLevel * 0.75})`;
+        if (fadeLabel) fadeLabel.style.color = instrumentFadeLevel > 0.3
+          ? `rgba(240,160,64,${instrumentFadeLevel * 1.2})` : 'rgba(240,160,64,0)';
+        if (fadeWarning) fadeWarning.className = 'inst-fade-warning';
+      } else {
+        instrumentFadeLevel = 0;
+        extViewPhase = 'idle';
+      }
+
+      if (activeTraining === 'none') {
+        const st = flightState;
+        let freeHtml = `<span style="color:var(--text-muted)">自由飞行</span> ` +
+          `<span style="color:var(--text-secondary);font-size:.65rem">${Math.round(st.airspeed)}KT · ${Math.round(st.altitude)}ft · HDG${Math.round(st.heading)}° · VS${Math.round(st.verticalSpeed)}FPM</span>`;
+        if (headTracking && isCalibrated && attnScore !== 0) {
+          const badgeCls = attnScore > 10 ? 'good' : attnScore > -10 ? 'warn' : 'bad';
+          freeHtml += `<span class="attn-score-badge ${badgeCls}">注意力${attnScore>0?'+':''}${attnScore}</span>`;
+        }
+        $('#trainingStatus').innerHTML = freeHtml;
+        instrumentFadeLevel = 0;
+        extViewPhase = 'idle';
+        return;
+      }
+      const ts = taskState;
+      const now = Date.now();
+      const elapsed = (now - ts.startTime) / 1000;
+      const st = flightState;
+
+      if (activeTraining === 'altitude') {
+        const altErr = st.altitude - ts.targetAlt;
+        const absErr = Math.abs(altErr);
+        ts.altPhaseTime += DT;
+
+        if (absErr <= ts.altTolerance) {
+          ts.passCount += DT * attnMult;
+          if (ts.passCount >= ts.altPhaseTotal) {
+            ts.score = Math.round((1 - ts.failCount / ts.altPhaseTime) * 100);
+            ts.score = Math.max(0, Math.min(100, ts.score));
+            showFeedbackMsg('高度保持 — 达标！', 'pass');
+            ts.phase = 'done';
+            setTimeout(() => { if (activeTraining === 'altitude') resetTaskState('altitude'); }, 3000);
+          }
+        } else {
+          ts.failCount += DT;
+          ts.passCount = Math.max(0, ts.passCount - DT * 0.3);
+        }
+
+        const hdg = absErr <= ts.altTolerance ? 'on' : absErr <= ts.altTolerance * 2 ? 'warn' : 'danger';
+        const dir = altErr > 0 ? '高' : '低';
+        updateTrainingUI('保持高度', `${ts.targetAlt}ft · 偏差${Math.round(absErr)}ft${altErr>0?'偏高':'偏低'}`,
+          Math.min(100, Math.round(ts.passCount / ts.altPhaseTotal * 100)), hdg, attnScore);
+      }
+
+      if (activeTraining === 'turn') {
+        const trRate = Math.abs(st.turnRate);
+        const idealRate = 2.5;
+        const rateErr = Math.abs(trRate - idealRate);
+        ts.turnPhaseTime += DT;
+        ts.turnTotal++;
+
+        if (rateErr <= 0.8) {
+          ts.turnGoodTime += DT * attnMult;
+          ts.turnTotalGood++;
+        }
+
+        let hdgRemain = ts.turnTargetHeading - st.heading;
+        if (hdgRemain > 180) hdgRemain -= 360;
+        if (hdgRemain < -180) hdgRemain += 360;
+
+        if (Math.abs(hdgRemain) < 5 && ts.turnPhaseTime > 2) {
+          ts.score = Math.round(ts.turnTotalGood / Math.max(1, ts.turnTotal) * 100);
+          showFeedbackMsg('标准转弯 — 完成！', 'pass');
+          ts.phase = 'done';
+          setTimeout(() => { if (activeTraining === 'turn') resetTaskState('turn'); }, 3000);
+        }
+
+        const hdg = rateErr <= 0.6 ? 'on' : rateErr <= 1.5 ? 'warn' : 'danger';
+        updateTrainingUI('标准转弯', `剩${Math.round(Math.abs(hdgRemain))}° · 转弯率${trRate.toFixed(1)}°/s`,
+          Math.min(100, Math.round(ts.turnGoodTime / Math.max(1, ts.turnPhaseTime) * 100)), hdg, attnScore);
+      }
+
+      if (activeTraining === 'approach') {
+        const targetVS = -st.airspeed * 5.3;
+        const vsErr = Math.abs(st.verticalSpeed - targetVS);
+        ts.appPhaseTime += DT;
+        ts.appDistance -= st.airspeed / 3600 * DT;
+
+        if (vsErr < 200) ts.passCount += DT * attnMult;
+        else ts.passCount = Math.max(0, ts.passCount - DT * 0.5);
+
+        if (st.altitude <= 100) {
+          ts.score = Math.round(ts.passCount / Math.max(1, ts.appPhaseTime) * 100);
+          showFeedbackMsg('仪表进近 — 到达跑道！', 'pass');
+          ts.phase = 'done';
+          setTimeout(() => { if (activeTraining === 'approach') { flightState.altitude = 3000; resetTaskState('approach'); } }, 3000);
+        }
+
+        const gsErr = Math.abs(st.verticalSpeed - targetVS);
+        const hdg = gsErr < 200 ? 'on' : gsErr < 500 ? 'warn' : 'danger';
+        updateTrainingUI('仪表进近', `${Math.round(st.altitude)}ft · 目标VS${Math.round(targetVS)}FPM · ${ts.appDistance.toFixed(1)}NM`,
+          Math.min(100, Math.round(ts.passCount / Math.max(1, ts.appPhaseTime) * 100)), hdg, attnScore);
+      }
+    }
+
+    function updateTrainingUI(title, detail, barPct, barClass, attnScore) {
+      const ts = $('#trainingStatus');
+      if (ts) {
+        let html = `<span style="color:var(--accent-blue);font-weight:600">${title}</span> ` +
+          `<span style="color:var(--text-secondary);font-size:.65rem">${detail}</span>` +
+          `<span class="ts-bar-wrap"><span class="ts-bar ${barClass}" style="width:${barPct}%"></span></span>` +
+          `<span class="ts-score">${barPct}%</span>`;
+        if (headTracking && isCalibrated && typeof attnScore === 'number' && attnScore !== 0) {
+          const badgeCls = attnScore > 10 ? 'good' : attnScore > -10 ? 'warn' : 'bad';
+          html += `<span class="attn-score-badge ${badgeCls}">注意${attnScore>0?'+':''}${attnScore}</span>`;
+        }
+        ts.innerHTML = html;
+      }
+    }
+
+    function showFeedbackMsg(msg, type) {
+      const fb = $('#taskFeedback');
+      if (!fb) return;
+      fb.textContent = msg;
+      fb.className = 'task-feedback-overlay ' + type + ' show';
+      setTimeout(() => { fb.className = 'task-feedback-overlay'; }, 2500);
+    }
+
+    /* === EXTERNAL VIEW TRAINING (INSTRUMENT FADE) === */
+    function updateExternalTraining(attnMult) {
+      const now = Date.now();
+      const elapsed = (now - extViewStartTime) / 1000;
+      const st = flightState;
+
+      // Calculate altitude and heading stability
+      if (extViewPhase === 'active') {
+        const altDev = Math.abs(st.verticalSpeed);
+        const hdgChange = Math.abs(st.turnRate);
+        const altStable = altDev < 300 ? 1 : altDev < 800 ? 0.5 : 0;
+        const hdgStable = hdgChange < 0.5 ? 1 : hdgChange < 1.5 ? 0.5 : 0;
+        extViewStabilityScore += (altStable * 0.6 + hdgStable * 0.4) * DT * attnMult;
+      }
+
+      // Phase transitions
+      if (extViewPhase === 'warming' && elapsed >= EXT_WARMUP) {
+        extViewPhase = 'fading';
+        extViewStartTime = now;
+        showFeedbackMsg('外视强化开始 — 仪表逐渐变暗', '');
+      }
+
+      if (extViewPhase === 'fading') {
+        const fadeElapsed = elapsed;
+        instrumentFadeLevel = Math.min(0.82, fadeElapsed / EXT_FADE_DURATION * 0.82);
+        if (fadeElapsed >= EXT_FADE_DURATION) {
+          extViewPhase = 'active';
+          extViewStartTime = now;
+          extViewStabilityScore = 0;
+          showFeedbackMsg('仪表已隐藏 — 依靠舱外视野飞行！', '');
+        }
+      }
+
+      if (extViewPhase === 'active' && elapsed >= EXT_ACTIVE_DURATION) {
+        extViewPhase = 'done';
+        instrumentFadeLevel = 0;
+        const maxScore = EXT_ACTIVE_DURATION * 1.0; // theoretical max
+        const finalScore = Math.round(extViewStabilityScore / maxScore * 100);
+        const grade = finalScore > 80 ? 'pass' : finalScore > 50 ? '' : 'fail';
+        const gradeMsg = finalScore > 80 ? '优秀' : finalScore > 50 ? '良好' : '需加强';
+        showFeedbackMsg(`外视强化 — ${gradeMsg}！得分${finalScore}%`, grade);
+        setTimeout(() => {
+          if (activeTraining === 'external') resetTaskState('external');
+        }, 3000);
+      }
+
+      // Update instrument fade overlay
+      const fadeEl = $('#instFadeOverlay');
+      const fadeLabel = $('#instFadeLabel');
+      const fadeWarning = $('#instFadeWarning');
+      if (fadeEl) {
+        const opacity = instrumentFadeLevel * 0.75;
+        fadeEl.style.background = `rgba(8,12,18,${opacity})`;
+      }
+      if (fadeLabel) {
+        fadeLabel.style.color = instrumentFadeLevel > 0.3
+          ? `rgba(240,160,64,${instrumentFadeLevel * 1.2})`
+          : 'rgba(240,160,64,0)';
+      }
+      if (fadeWarning) {
+        fadeWarning.className = (extViewPhase === 'active')
+          ? 'inst-fade-warning show' : 'inst-fade-warning';
+      }
+
+      // Training UI
+      let phaseLabel, barPct, barClass, detail;
+      if (extViewPhase === 'warming') {
+        const remain = Math.ceil(EXT_WARMUP - elapsed);
+        phaseLabel = '外视强化';
+        detail = `准备阶段 · ${remain}s后可开始 · 熟悉当前姿态`;
+        barPct = Math.round(elapsed / EXT_WARMUP * 100);
+        barClass = 'on';
+      } else if (extViewPhase === 'fading') {
+        const fadePct = Math.round(elapsed / EXT_FADE_DURATION * 100);
+        phaseLabel = '外视强化';
+        detail = `仪表渐隐中 ${fadePct}% · 注意窗外参考`;
+        barPct = fadePct;
+        barClass = 'warn';
+      } else if (extViewPhase === 'active') {
+        const remain = Math.ceil(EXT_ACTIVE_DURATION - elapsed);
+        const scorePct = Math.round(extViewStabilityScore / Math.max(1, elapsed) * 100);
+        phaseLabel = '外视强化';
+        detail = `仅靠窗外飞行 · 剩余${remain}s · ${Math.round(st.altitude)}ft HDG${Math.round(st.heading)}°`;
+        barPct = Math.min(100, scorePct);
+        barClass = barPct > 70 ? 'on' : 'warn';
+      } else if (extViewPhase === 'done') {
+        phaseLabel = '外视强化';
+        detail = `评估完成 · 仪表恢复中`;
+        barPct = 100;
+        barClass = 'on';
+        instrumentFadeLevel = Math.max(0, instrumentFadeLevel - DT * 2);
+      } else {
+        phaseLabel = '外视强化';
+        detail = `等待开始...`;
+        barPct = 0;
+        barClass = 'on';
+      }
+
+      const attnScore = getAttentionQuality();
+      const ts = $('#trainingStatus');
+      if (ts) {
+        let html = `<span style="color:var(--accent-purple);font-weight:600">${phaseLabel}</span> ` +
+          `<span style="color:var(--text-secondary);font-size:.65rem">${detail}</span>` +
+          `<span class="ts-bar-wrap"><span class="ts-bar ${barClass}" style="width:${barPct}%"></span></span>` +
+          `<span class="ts-score">${barPct}%</span>`;
+        if (headTracking && isCalibrated && attnScore !== 0) {
+          const badgeCls = attnScore > 10 ? 'good' : attnScore > -10 ? 'warn' : 'bad';
+          html += `<span class="attn-score-badge ${badgeCls}">注意${attnScore>0?'+':''}${attnScore}</span>`;
+        }
+        ts.innerHTML = html;
+      }
+    }
+
+    function resetExternalTraining() {
+      instrumentFadeLevel = 0;
+      extViewPhase = 'warming';
+      extViewStartTime = Date.now();
+      extViewStabilityScore = 0;
+      const fadeEl = $('#instFadeOverlay');
+      const fadeLabel = $('#instFadeLabel');
+      const fadeWarning = $('#instFadeWarning');
+      if (fadeEl) fadeEl.style.background = 'rgba(8,12,18,0)';
+      if (fadeLabel) fadeLabel.style.color = 'rgba(240,160,64,0)';
+      if (fadeWarning) fadeWarning.className = 'inst-fade-warning';
+      showFeedbackMsg('外视强化准备 — 10秒后仪表开始变暗', '');
+    }
+
+    // Task button clicks (DOM is ready — script is at end of body)
+    $$('.task-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        startTraining(btn.dataset.task);
+      });
+    });
+
+    const trackingBtn = $('#trackingBtn');
+    const webcamPreview = $('#webcamPreview');
+    const webcamVideo = $('#webcamVideo');
+    const trackingStatus = $('#trackingStatus');
+    const faceBox = $('#faceBox');
+    const faceDot = $('#faceDot');
+    const calibrateHint = $('#calibrateHint');
+
+    // Start webcam
+    async function startWebcam() {
+      if (webcamVideo.srcObject) return true; // Already started
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 320, height: 240, facingMode: 'user' },
+          audio: false
+        });
+        webcamVideo.srcObject = stream;
+        await webcamVideo.play();
+
+        // Offscreen canvas for pixel analysis
+        trackCanvas = document.createElement('canvas');
+        trackCanvas.width = 64;   // low-res for performance
+        trackCanvas.height = 48;
+        trackCtx = trackCanvas.getContext('2d');
+
+        console.log('摄像头已启动，像素追踪模式');
+        return true;
+      } catch (e) {
+        console.error('摄像头访问失败:', e);
+        alert('无法访问摄像头：' + e.message + '\n\n请确保已授予摄像头权限。');
+        return false;
+      }
+    }
+
+    // Stop webcam
+    function stopWebcam() {
+      if (webcamVideo.srcObject) {
+        webcamVideo.srcObject.getTracks().forEach(t => t.stop());
+        webcamVideo.srcObject = null;
+      }
+      faceDetected = false;
+      isCalibrated = false;
+    }
+
+    // Pixel-based face position tracking
+    // Analyzes brightness distribution to find face center
+    // Since the user's face is typically brighter than the background
+    function detectFacePixel() {
+      if (!headTracking || !webcamVideo.srcObject || webcamVideo.readyState < 2) return;
+
+      const tw = trackCanvas.width;   // 64
+      const th = trackCanvas.height;   // 48
+
+      // Draw current video frame to small offscreen canvas (mirrored)
+      trackCtx.save();
+      trackCtx.translate(tw, 0);
+      trackCtx.scale(-1, 1);
+      trackCtx.drawImage(webcamVideo, 0, 0, tw, th);
+      trackCtx.restore();
+
+      // Get pixel data
+      const imgData = trackCtx.getImageData(0, 0, tw, th);
+      const pixels = imgData.data;
+
+      // Calculate brightness-weighted center of mass
+      // Focus on center-top region where face usually is
+      let totalWeight = 0;
+      let sumX = 0, sumY = 0;
+      const roiX1 = Math.floor(tw * 0.15);
+      const roiX2 = Math.floor(tw * 0.85);
+      const roiY1 = Math.floor(th * 0.05);
+      const roiY2 = Math.floor(th * 0.85);
+
+      // First pass: find max brightness for threshold
+      let maxBright = 0;
+      for (let y = roiY1; y < roiY2; y++) {
+        for (let x = roiX1; x < roiX2; x++) {
+          const idx = (y * tw + x) * 4;
+          const bright = (pixels[idx] + pixels[idx + 1] + pixels[idx + 2]) / 3;
+          if (bright > maxBright) maxBright = bright;
+        }
+      }
+
+      // Second pass: weighted center of mass with threshold
+      const threshold = maxBright * 0.55;
+      for (let y = roiY1; y < roiY2; y++) {
+        for (let x = roiX1; x < roiX2; x++) {
+          const idx = (y * tw + x) * 4;
+          const bright = (pixels[idx] + pixels[idx + 1] + pixels[idx + 2]) / 3;
+          if (bright > threshold) {
+            const weight = bright - threshold;
+            sumX += x * weight;
+            sumY += y * weight;
+            totalWeight += weight;
+          }
+        }
+      }
+
+      if (totalWeight > 50) {
+        // Normalize to [0, 1]
+        targetFaceX = sumX / totalWeight / tw;
+        targetFaceY = sumY / totalWeight / th;
+        faceDetected = true;
+        faceSize = Math.min(totalWeight / 5000, 0.5);
+
+        // Update visual indicators
+        const pRect = webcamPreview.getBoundingClientRect();
+        faceBox.style.display = 'block';
+        faceBox.style.left = (targetFaceX * pRect.width - 15) + 'px';
+        faceBox.style.top = (targetFaceY * pRect.height - 15) + 'px';
+        faceBox.style.width = '30px';
+        faceBox.style.height = '30px';
+        faceDot.style.display = 'block';
+        faceDot.style.left = (targetFaceX * pRect.width) + 'px';
+        faceDot.style.top = (targetFaceY * pRect.height) + 'px';
+      } else {
+        faceDetected = false;
+        faceBox.style.display = 'none';
+        faceDot.style.display = 'none';
+      }
+    }
+
+    // Start calibration — snap neutral face position
+    function startCalibration() {
+      if (!headTracking) return;
+      calibrating = true;
+      calibrateFrames = 0;
+      neutralX = 0; neutralY = 0;
+      calibrateHint.classList.add('show');
+      calibrateHint.textContent = '校准中… 请正视摄像头保持不动';
+      setTimeout(() => calibrateHint.classList.remove('show'), 3000);
+
+      // Collect neutral position over ~2 seconds
+      const calInterval = setInterval(() => {
+        if (!calibrating) return;
+        detectFacePixel(); // ensure latest face position
+        if (!faceDetected) {
+          calibrateHint.textContent = '未检测到面部… 请确保光照充足';
+          return;
+        }
+        neutralX += targetFaceX;
+        neutralY += targetFaceY;
+        calibrateFrames++;
+      }, 120);
+
+      setTimeout(() => {
+        clearInterval(calInterval);
+        if (calibrateFrames > 3) {
+          neutralX /= calibrateFrames;
+          neutralY /= calibrateFrames;
+          isCalibrated = true;
+          calibrateHint.classList.add('show');
+          calibrateHint.textContent = '校准完成！现在移动头部控制飞机';
+          calibrateHint.style.color = 'var(--accent-cyan)';
+          calibrateHint.style.borderColor = 'var(--accent-cyan)';
+          setTimeout(() => {
+            calibrateHint.classList.remove('show');
+            calibrateHint.style.color = 'var(--accent-amber)';
+            calibrateHint.style.borderColor = 'var(--accent-amber)';
+          }, 2000);
+          console.log('校准完成: neutral=(' + neutralX.toFixed(3) + ',' + neutralY.toFixed(3) + ') samples=' + calibrateFrames);
+        } else {
+          calibrateHint.classList.add('show');
+          calibrateHint.textContent = '校准失败！请重新尝试（点击空格键）';
+          setTimeout(() => calibrateHint.classList.remove('show'), 2500);
+        }
+        calibrating = false;
+      }, 2000);
+    }
+
+    // Toggle head tracking
+    async function toggleHeadTracking() {
+      if (headTracking) {
+        // Disable
+        headTracking = false;
+        trackingBtn.classList.remove('enabled');
+        webcamPreview.classList.remove('active');
+        trackingStatus.classList.remove('active');
+        isCalibrated = false;
+        faceDetected = false;
+        stopWebcam();
+        targetPitch = 5; targetRoll = 2;
+        targetHeading = 245;
+        instrumentFadeLevel = 0;
+        extViewPhase = 'idle';
+        const fadeEl = $('#instFadeOverlay');
+        const fadeLabel = $('#instFadeLabel');
+        const fadeWarning = $('#instFadeWarning');
+        if (fadeEl) fadeEl.style.background = 'rgba(8,12,18,0)';
+        if (fadeLabel) fadeLabel.style.color = 'rgba(240,160,64,0)';
+        if (fadeWarning) fadeWarning.className = 'inst-fade-warning';
+        hideCoachReminder();
+        resetAttentionData();
+      } else {
+        // Enable
+        const started = await startWebcam();
+        if (!started) return;
+        headTracking = true;
+        trackingBtn.classList.add('enabled');
+        webcamPreview.classList.add('active');
+        trackingStatus.classList.add('active');
+        resetAttentionData();
+        setTimeout(startCalibration, 800);
+      }
+    }
+
+    trackingBtn.addEventListener('click', toggleHeadTracking);
+
+    // Head tracking loop (runs at ~15fps using pixel analysis)
+    function trackingLoop() {
+      if (headTracking) {
+        detectFacePixel();
+
+        // Smooth face position
+        const smoothFactor = 0.35;
+        faceX += (targetFaceX - faceX) * smoothFactor;
+        faceY += (targetFaceY - faceY) * smoothFactor;
+
+        if (isCalibrated && faceDetected) {
+          // Map face displacement to aircraft attitude
+          const dx = faceX - neutralX; // [-0.5, 0.5]
+          const dy = faceY - neutralY; // [-0.5, 0.5]
+
+          // Roll: -30 to +30 degrees (more sensitive)
+          targetRoll = dx * 120;
+          targetRoll = Math.max(-35, Math.min(35, targetRoll));
+
+          // Pitch: -25 (dive) to +25 (climb) degrees (more sensitive)
+          targetPitch = -dy * 100;
+          targetPitch = Math.max(-25, Math.min(25, targetPitch));
+
+          // Heading changes slightly with horizontal look
+          targetHeading = 245 + dx * 60;
+          if (targetHeading >= 360) targetHeading -= 360;
+          if (targetHeading < 0) targetHeading += 360;
+
+          // Attention gaze classification
+          const displacement = Math.sqrt(dx * dx + dy * dy);
+          const now = Date.now();
+          const isOutside = displacement > 0.08;
+          currentGazeZone = isOutside ? 'outside' : 'inside';
+          gazeDwellStart = gazeDwellStart || now;
+
+          // --- Continuous gaze tracking for coach reminders ---
+          if (isOutside) {
+            outsideTimeMs += 100;
+            // Reset continuous inside gaze counter
+            if (continuousInsideGazeMs > 3000) {
+              // Was staring inside, now looking out — good!
+              hideCoachReminder();
+              attentionBoost = Math.min(30, attentionBoost + 5);
+            }
+            continuousInsideGazeMs = 0;
+          } else {
+            continuousInsideGazeMs += 100;
+            // Coach reminder triggers
+            if (continuousInsideGazeMs >= COACH_ESCALATE) {
+              showCoachReminder('严重警告', '你已经持续注视仪表超过15秒！\n飞行员需要交替扫描座舱内外。', '立即抬头观察窗外地平线', 'danger');
+              attentionBoost = Math.max(-30, attentionBoost - 3);
+            } else if (continuousInsideGazeMs >= COACH_THRESHOLD && continuousInsideGazeMs < COACH_ESCALATE) {
+              showCoachReminder('教练提示', '仪表注视时间过长，请抬头观察窗外', '交替扫描是目视飞行的基本技能', 'warn');
+              attentionBoost = Math.max(-30, attentionBoost - 1);
+            }
+            // Map face position to instrument panel coordinates
+            const panelX = 0.5 + dx * 3.5;
+            const panelY = 0.15 + dy * 2.5;
+            let bestInst = null, bestDist = Infinity;
+            instruments.forEach(inst => {
+              const icx = inst.x + inst.w / 2;
+              const icy = inst.y + inst.h / 2;
+              const dist = Math.sqrt((panelX - icx) ** 2 + (panelY - icy) ** 2);
+              if (dist < bestDist) { bestDist = dist; bestInst = inst; }
+            });
+            if (bestInst) {
+              instAttentionTime[bestInst.id] = (instAttentionTime[bestInst.id] || 0) + 100;
+              instLastCheck[bestInst.id] = now;
+            }
+          }
+        }
+      }
+
+      if (faceDetected && isCalibrated) {
+        const dx = faceX - neutralX;
+        const dy = faceY - neutralY;
+        const lr = dx > 0.03 ? '→右' : dx < -0.03 ? '←左' : '·中·';
+        const ud = dy > 0.03 ? '↓下' : dy < -0.03 ? '↑上' : '·中·';
+        trackingStatus.textContent = 'HEAD :: ' + lr + ' ' + ud + ' | R' + Math.round(targetRoll) + '° P' + Math.round(targetPitch) + '°';
+      } else if (faceDetected && calibrating) {
+        trackingStatus.textContent = 'HEAD TRACKING :: 校准中…';
+      } else if (faceDetected && !isCalibrated) {
+        trackingStatus.textContent = 'HEAD TRACKING :: 等待校准';
+      } else {
+        trackingStatus.textContent = 'HEAD TRACKING :: 未检测到面部';
+      }
+    }
+    setInterval(trackingLoop, 100);
+
+  /* ============ ATTENTION TRACKING DATA ============ */
+  let currentGazeZone = 'inside';
+  let gazeDwellStart = null;
+  let outsideTimeMs = 0;
+  let instAttentionTime = {};    // instrument.id → accumulated ms
+  let instLastCheck = {};        // instrument.id → last timestamp
+  let totalTrackedTime = 0;
+
+  // === COACH CORRECTION SYSTEM ===
+  let continuousInsideGazeMs = 0;     // continuous cockpit gazing time
+  let coachReminderVisible = false;
+  let coachReminderHideTime = 0;
+  const COACH_THRESHOLD = 8000;       // 8s threshold
+  const COACH_ESCALATE = 15000;       // 15s escalated warning
+
+  // === ATTENTION SCORING ===
+  let attentionBoost = 0;             // -30 to +30, affects training progress rate
+  let attentionPenaltyHistory = [];   // rolling window of penalties
+
+  // === EXTERNAL VIEW TRAINING (INSTRUMENT FADE) ===
+  let instrumentFadeLevel = 0;        // 0 = normal, 1 = fully dimmed
+  let extViewPhase = 'idle';          // idle | warming | active | done
+  let extViewStartTime = 0;
+  const EXT_WARMUP = 10;              // 10s warmup with full instruments
+  const EXT_FADE_DURATION = 20;       // 20s fade transition
+  const EXT_ACTIVE_DURATION = 30;     // 30s instrument-free flying
+  let extViewStabilityScore = 0;
+
+  function resetAttentionData() {
+    currentGazeZone = 'inside';
+    gazeDwellStart = null;
+    outsideTimeMs = 0;
+    instAttentionTime = {};
+    instLastCheck = {};
+    totalTrackedTime = 0;
+    continuousInsideGazeMs = 0;
+    attentionBoost = 0;
+    attentionPenaltyHistory = [];
+    hideCoachReminder();
+    instruments.forEach(inst => {
+      instAttentionTime[inst.id] = 0;
+      instLastCheck[inst.id] = null;
+    });
+  }
+
+  // Coach reminder show/hide
+  function showCoachReminder(title, msg, sub, level) {
+    const cr = $('#coachReminder');
+    if (!cr) return;
+    $('#coachMsg').textContent = msg;
+    $('#coachSub').textContent = sub;
+    $('#coachAction').textContent = '';
+    cr.className = 'coach-reminder show ' + (level || 'warn');
+    coachReminderVisible = true;
+    coachReminderHideTime = Date.now() + 3500;
+  }
+
+  function hideCoachReminder() {
+    const cr = $('#coachReminder');
+    if (cr) cr.className = 'coach-reminder';
+    coachReminderVisible = false;
+    coachReminderHideTime = 0;
+  }
+
+  // Auto-hide coach reminder after timeout
+  function updateCoachReminder() {
+    if (coachReminderVisible && Date.now() > coachReminderHideTime && continuousInsideGazeMs < COACH_THRESHOLD) {
+      hideCoachReminder();
+    }
+  }
+  setInterval(updateCoachReminder, 500);
+
+  // Calculate attention quality score for training integration
+  function getAttentionQuality() {
+    if (!headTracking || !isCalibrated) return 0;
+    const total = outsideTimeMs + Object.values(instAttentionTime).reduce((a, b) => a + b, 0);
+    if (total < 1000) return 0;
+    const outsideRatio = outsideTimeMs / total;
+    // Ideal: 70-80% outside view during VFR, 30-50% during IFR training
+    // For general training: reward balanced scanning
+    let score;
+    if (activeTraining === 'external') {
+      // External view training: reward 80%+ outside
+      score = outsideRatio > 0.8 ? 30 : outsideRatio > 0.65 ? 15 : outsideRatio > 0.5 ? 0 : -15;
+    } else if (activeTraining === 'approach') {
+      // IFR approach: should be mostly inside, but still some outside
+      score = outsideRatio > 0.25 && outsideRatio < 0.5 ? 20 : outsideRatio < 0.15 ? -10 : outsideRatio > 0.7 ? -15 : 5;
+    } else if (activeTraining !== 'none') {
+      // General VFR training: 60-80% outside ideal
+      score = outsideRatio > 0.55 && outsideRatio < 0.85 ? 25 : outsideRatio > 0.4 ? 10 : outsideRatio < 0.3 ? -20 : 0;
+    } else {
+      // Free flight
+      score = outsideRatio > 0.5 ? 15 : 0;
+    }
+    // Continuous gaze penalty
+    if (continuousInsideGazeMs > COACH_ESCALATE) score -= 20;
+    else if (continuousInsideGazeMs > COACH_THRESHOLD) score -= 8;
+    return Math.max(-30, Math.min(30, score));
+  }
+
+  /* ============ CLOUD SYSTEM ============ */
+    const clouds = [];
+    function generateClouds(w, h) {
+      clouds.length = 0;
+      const count = Math.floor(w / 90);
+      for (let i = 0; i < count; i++) {
+        clouds.push({
+          x: rand(0, w),
+          y: rand(h * 0.02, h * 0.38),
+          w: rand(w * 0.06, w * 0.2),
+          h: rand(h * 0.04, h * 0.1),
+          speed: rand(0.15, 0.55),
+          opacity: rand(0.35, 0.85),
+          puffCount: randInt(5, 12),
+          puffs: Array.from({ length: randInt(5, 12) }, () => ({
+            rx: rand(-0.35, 0.35),
+            ry: rand(-0.3, 0.3),
+            r: rand(0.25, 0.6)
+          }))
+        });
+      }
+    }
+
+    let skyDriftX = 0, skyDriftY = 0, skyBank = 0;
+
+    function drawSkyBackground() {
+      const scene = scenes[currentScene];
+      const w = canvasW, h = canvasH;
+
+      // Throttled attitude from AI instrument for external view
+      const ai = instruments.find(i => i.id === 'ai');
+      const extPitch = ai ? ai.val : 0;    // pitch in degrees
+      const extRoll = ai ? ai.val2 : 0;     // roll in degrees
+
+      // ===== GROUND (below visible horizon, only in windshield area) =====
+      // Horizon sits at ~65% of visible sky area; pitch moves it
+      const horizonBaseY = h * 0.28;
+      const horizonOffsetY = extPitch * h * 0.012; // pitch moves horizon
+      const horizonY = horizonBaseY + skyDriftY * 0.5 + horizonOffsetY;
+
+      // Draw sky gradient FIRST (full canvas as base, will be partially overlaid)
+      const skyGrad = ctx.createLinearGradient(0, 0, 0, h * 0.55);
+      skyGrad.addColorStop(0, scene.skyTop);
+      skyGrad.addColorStop(0.6, scene.skyBottom);
+      skyGrad.addColorStop(1, '#bdd5ea');
+      ctx.fillStyle = skyGrad;
+      ctx.fillRect(0, 0, w, h);
+
+      // ===== GROUND TERRAIN with attitude transform =====
+      ctx.save();
+      // Translate to horizon center, apply roll rotation and pitch offset
+      ctx.translate(w / 2 + skyDriftX, horizonY);
+      ctx.rotate(skyBank * 0.8 + extRoll * 0.015);
+
+      // Ground fill (below horizon line)
+      const groundGrad = ctx.createLinearGradient(0, 0, 0, h * 0.5);
+      if (currentScene === 'night') {
+        groundGrad.addColorStop(0, '#1a2a18');
+        groundGrad.addColorStop(0.3, '#0f1a10');
+        groundGrad.addColorStop(1, '#060e08');
+      } else if (currentScene === 'lowvis') {
+        groundGrad.addColorStop(0, '#9a9a90');
+        groundGrad.addColorStop(1, '#7a7a70');
+      } else {
+        groundGrad.addColorStop(0, '#6b8a4a');
+        groundGrad.addColorStop(0.25, '#5a7a3a');
+        groundGrad.addColorStop(0.7, '#3a5a28');
+        groundGrad.addColorStop(1, '#2a3a18');
+      }
+      ctx.fillStyle = groundGrad;
+      ctx.fillRect(-w, 0, w * 3, h * 0.7);
+
+      // Terrain hills (distant)
+      ctx.fillStyle = currentScene === 'night' ? '#1e2e16' : '#567a3a';
+      ctx.beginPath();
+      ctx.moveTo(-w * 0.2, -h * 0.02);
+      ctx.quadraticCurveTo(w * 0.15, -h * 0.07, w * 0.3, -h * 0.015);
+      ctx.quadraticCurveTo(w * 0.45, -h * 0.04, w * 0.6, 0);
+      ctx.quadraticCurveTo(w * 0.75, -h * 0.03, w * 1.1, 0);
+      ctx.lineTo(w * 1.1, h * 0.3);
+      ctx.lineTo(-w * 0.2, h * 0.3);
+      ctx.closePath();
+      ctx.fill();
+
+      // Distant ground glow (atmospheric perspective)
+      const atmosGrad = ctx.createLinearGradient(0, -h * 0.02, 0, h * 0.08);
+      atmosGrad.addColorStop(0, currentScene === 'lowvis' ? 'rgba(200,200,195,0.35)' : 'rgba(200,210,230,0.2)');
+      atmosGrad.addColorStop(1, 'rgba(200,210,230,0)');
+      ctx.fillStyle = atmosGrad;
+      ctx.fillRect(-w, -h * 0.02, w * 3, h * 0.1);
+
+      // ===== HORIZON LINE =====
+      ctx.beginPath();
+      ctx.moveTo(-w * 0.2, 0);
+      ctx.lineTo(w * 1.1, 0);
+      ctx.strokeStyle = currentScene === 'night' ? 'rgba(80,120,160,0.5)' : 'rgba(140,160,140,0.7)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Thin bright horizon edge (atmospheric effect)
+      ctx.beginPath();
+      ctx.moveTo(-w * 0.2, -1);
+      ctx.lineTo(w * 1.1, -1);
+      ctx.strokeStyle = currentScene === 'night' ? 'rgba(120,160,200,0.3)' : 'rgba(255,255,240,0.4)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Runway in distance (only day/clear)
+      if (currentScene === 'day' || currentScene === 'turbulence') {
+        ctx.fillStyle = '#3a3a38';
+        ctx.fillRect(w * 0.38, -h * 0.01, w * 0.06, h * 0.015);
+        ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(w * 0.38, -h * 0.01, w * 0.06, h * 0.015);
+        // Runway centerline dashes
+        ctx.setLineDash([3, 4]);
+        ctx.beginPath();
+        ctx.moveTo(w * 0.41, -h * 0.008);
+        ctx.lineTo(w * 0.41, h * 0.004);
+        ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      ctx.restore();
+
+      // Low-vis fog overlay over ground
+      if (currentScene === 'lowvis') {
+        ctx.fillStyle = 'rgba(190,195,200,0.3)';
+        ctx.fillRect(0, horizonBaseY - h * 0.01, w, h * 0.2);
+      }
+
+      // Distant horizon glow (in screen space above horizon approx area)
+      const hGrad = ctx.createLinearGradient(0, h * 0.18, 0, h * 0.38);
+      hGrad.addColorStop(0, 'rgba(255,255,240,0)');
+      if (currentScene === 'night') {
+        hGrad.addColorStop(0.5, 'rgba(100,130,180,0.12)');
+        hGrad.addColorStop(1, 'rgba(60,80,120,0)');
+      } else {
+        hGrad.addColorStop(0.5, 'rgba(255,255,240,0.2)');
+        hGrad.addColorStop(1, 'rgba(220,230,245,0)');
+      }
+      ctx.fillStyle = hGrad;
+      ctx.fillRect(0, h * 0.18, w, h * 0.2);
+
+      // Apply attitude transforms for clouds
+      ctx.save();
+      ctx.translate(w / 2 + skyDriftX, horizonY);
+      ctx.rotate(skyBank * 0.5);
+
+      // Draw clouds
+      clouds.forEach(cloud => {
+        ctx.save();
+        const cx = cloud.x - w / 2;
+        const cy = cloud.y - horizonY;
+        ctx.translate(cx, cy);
+        ctx.globalAlpha = cloud.opacity * scene.cloudAlpha;
+
+        const cloudColor = currentScene === 'night'
+          ? 'rgba(180,195,220,1)'
+          : 'rgba(255,255,255,1)';
+
+        cloud.puffs.forEach(puff => {
+          const px = puff.rx * cloud.w;
+          const py = puff.ry * cloud.h;
+          const pr = puff.r * Math.min(cloud.w, cloud.h) * 0.8;
+          ctx.beginPath();
+          ctx.arc(px, py, pr, 0, Math.PI * 2);
+          ctx.fillStyle = cloudColor;
+          ctx.fill();
+        });
+        ctx.restore();
+      });
+      ctx.restore();
+
+      // Cloud shadow on ground (distant)
+      if (currentScene !== 'night') {
+        ctx.fillStyle = 'rgba(140,155,170,0.12)';
+        clouds.forEach(cloud => {
+          ctx.beginPath();
+          ctx.ellipse(cloud.x, h * 0.44 + cloud.y * 0.15, cloud.w * 0.7, cloud.h * 0.25, 0, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+
+      // Ground below horizon
+      const gGrad = ctx.createLinearGradient(0, h * 0.35, 0, h * 0.52);
+      if (currentScene === 'night') {
+        gGrad.addColorStop(0, 'rgba(30,38,50,0.6)');
+        gGrad.addColorStop(1, 'rgba(20,25,35,0.9)');
+      } else {
+        gGrad.addColorStop(0, 'rgba(140,160,140,0.3)');
+        gGrad.addColorStop(1, 'rgba(100,120,100,0.6)');
+      }
+      ctx.fillStyle = gGrad;
+      ctx.fillRect(0, h * 0.35, w, h * 0.17);
+
+      // Haze overlay
+      if (scene.hazeAlpha > 0) {
+        ctx.fillStyle = `rgba(200,210,220,${scene.hazeAlpha})`;
+        ctx.fillRect(0, 0, w, h * 0.44);
+      }
+
+      // ===== WINDSHIELD STRUCTURE =====
+      // Windshield arch
+      ctx.strokeStyle = 'rgba(20,25,32,0.85)';
+      ctx.lineWidth = Math.max(w * 0.025, 18);
+      ctx.beginPath();
+      ctx.moveTo(0, h * 0.42);
+      ctx.quadraticCurveTo(w * 0.08, h * 0.06, w * 0.25, h * 0.02);
+      ctx.lineTo(w * 0.75, h * 0.02);
+      ctx.quadraticCurveTo(w * 0.92, h * 0.06, w, h * 0.42);
+      ctx.stroke();
+
+      // Center pillar
+      ctx.strokeStyle = 'rgba(20,25,32,0.9)';
+      ctx.lineWidth = Math.max(w * 0.012, 8);
+      ctx.beginPath();
+      ctx.moveTo(w * 0.5, h * 0.02);
+      ctx.lineTo(w * 0.5, h * 0.42);
+      ctx.stroke();
+
+      // Inner windshield edge highlight
+      ctx.strokeStyle = 'rgba(60,75,95,0.35)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(w * 0.25 + 2, h * 0.022);
+      ctx.lineTo(w * 0.75 - 2, h * 0.022);
+      ctx.stroke();
+
+      // Side window frames
+      ctx.strokeStyle = 'rgba(20,25,32,0.7)';
+      ctx.lineWidth = Math.max(w * 0.01, 6);
+      // Left strut
+      ctx.beginPath();
+      ctx.moveTo(0, h * 0.42);
+      ctx.lineTo(0, h * 0.30);
+      ctx.stroke();
+      // Right strut
+      ctx.beginPath();
+      ctx.moveTo(w, h * 0.42);
+      ctx.lineTo(w, h * 0.30);
+      ctx.stroke();
+
+      // ===== GLARESHIELD =====
+      ctx.fillStyle = 'rgba(18,22,30,0.95)';
+      ctx.fillRect(0, h * 0.42, w, h * 0.045);
+      // Glareshield highlight edge
+      ctx.strokeStyle = 'rgba(50,65,85,0.4)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(0, h * 0.42);
+      ctx.lineTo(w, h * 0.42);
+      ctx.stroke();
+
+      // ===== INSTRUMENT PANEL BACKGROUND =====
+      // Panel dark surface
+      const panelGrad = ctx.createLinearGradient(0, h * 0.46, 0, h);
+      if (currentScene === 'night') {
+        panelGrad.addColorStop(0, '#0a0e16');
+        panelGrad.addColorStop(1, '#060910');
+      } else {
+        panelGrad.addColorStop(0, '#0d111a');
+        panelGrad.addColorStop(1, '#080b12');
+      }
+      ctx.fillStyle = panelGrad;
+      ctx.fillRect(0, h * 0.46, w, h * 0.54);
+
+      // Panel subtle texture lines
+      ctx.strokeStyle = 'rgba(30,40,55,0.2)';
+      ctx.lineWidth = 0.5;
+      for (let py = h * 0.48; py < h; py += h * 0.06) {
+        ctx.beginPath();
+        ctx.moveTo(w * 0.05, py);
+        ctx.lineTo(w * 0.95, py);
+        ctx.stroke();
+      }
+
+      // Night: starfield
+      if (currentScene === 'night') {
+        ctx.fillStyle = '#ffffff';
+        const starCount = Math.floor(w * 0.5);
+        for (let i = 0; i < starCount; i++) {
+          const sx = rand(0, w);
+          const sy = rand(0, h * 0.3);
+          const sr = rand(0.3, 1.2);
+          const so = rand(0.2, 0.8);
+          ctx.globalAlpha = so;
+          ctx.beginPath();
+          ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    $$('.scene-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        $$('.scene-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        currentScene = tab.dataset.scene;
+        skyDriftX = 0; skyDriftY = 0; skyBank = 0;
+        generateClouds(canvasW, canvasH);
+        drawAll();
+      });
+    });
+
+    /* ============ COCKPIT CANVAS RENDERING ============ */
+    const canvas = $('#cockpitCanvas');
+    const ctx = canvas.getContext('2d');
+    let canvasW, canvasH;
+
+    function resizeCanvas() {
+      const panel = $('#cockpitPanel');
+      const scene = $('#cockpitScene');
+      const rect = scene.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvasW = rect.width;
+      canvasH = rect.height;
+      canvas.width = canvasW * dpr;
+      canvas.height = canvasH * dpr;
+      canvas.style.width = canvasW + 'px';
+      canvas.style.height = canvasH + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    /* --- Instrument Definitions --- */
+    const instruments = [
+      { id: 'asi', label: '空速表', x: 0.07, y: 0.12, w: 0.14, h: 0.28, type: 'dial', min: 0, max: 400, unit: 'KT', val: 280 },
+      { id: 'alt', label: '高度表', x: 0.80, y: 0.12, w: 0.14, h: 0.28, type: 'dial', min: 0, max: 50000, unit: 'FT', val: 28500 },
+      { id: 'ai',  label: '姿态仪', x: 0.24, y: 0.08, w: 0.22, h: 0.32, type: 'attitude', val: 5, val2: 2 },
+      { id: 'hsi', label: '水平状态仪', x: 0.55, y: 0.08, w: 0.22, h: 0.32, type: 'hsi', val: 245 },
+      { id: 'vsi', label: '升降速度表', x: 0.385, y: 0.42, w: 0.1, h: 0.2, type: 'dial', min: -6000, max: 6000, unit: 'FPM', val: 500 },
+      { id: 'tc',  label: '转弯侧滑仪', x: 0.515, y: 0.42, w: 0.1, h: 0.2, type: 'dial', min: 0, max: 4, unit: '°', val: 1.5 },
+      { id: 'eng1', label: '发动机N1', x: 0.07, y: 0.45, w: 0.12, h: 0.22, type: 'bar', min: 0, max: 110, unit: '%', val: 92.5 },
+      { id: 'eng2', label: '发动机EGT', x: 0.07, y: 0.70, w: 0.12, h: 0.2, type: 'bar', min: 0, max: 1000, unit: '°C', val: 720 },
+      { id: 'fuel', label: '燃油量', x: 0.82, y: 0.45, w: 0.12, h: 0.22, type: 'bar', min: 0, max: 24000, unit: 'LBS', val: 16400 },
+      { id: 'oil',  label: '滑油压力', x: 0.82, y: 0.70, w: 0.12, h: 0.2, type: 'bar', min: 0, max: 100, unit: 'PSI', val: 65 },
+      { id: 'flap', label: '襟翼指示', x: 0.375, y: 0.66, w: 0.06, h: 0.26, type: 'flap', val: 10 },
+      { id: 'gear', label: '起落架', x: 0.555, y: 0.66, w: 0.06, h: 0.26, type: 'gear', val: 1 },
+    ];
+
+    // Initialize attention time accumulators now that instruments are defined
+    instruments.forEach(inst => {
+      instAttentionTime[inst.id] = 0;
+      instLastCheck[inst.id] = null;
+    });
+
+    /* --- Draw dial gauge --- */
+    function drawDial(cx, cy, r, inst, brightness) {
+      const alpha = brightness;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.globalAlpha = alpha;
+
+      // Outer ring
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fillStyle = '#0a0f18';
+      ctx.fill();
+      ctx.strokeStyle = '#2a3a55';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Inner ring
+      ctx.beginPath();
+      ctx.arc(0, 0, r - 10, 0, Math.PI * 2);
+      ctx.fillStyle = '#080c14';
+      ctx.fill();
+      ctx.strokeStyle = '#1e2d45';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Tick marks
+      const tickCount = 12;
+      for (let i = 0; i < tickCount; i++) {
+        const angle = (i / tickCount) * Math.PI * 2 - Math.PI / 2;
+        const innerR = r - 16;
+        const outerR = i % 3 === 0 ? r - 8 : r - 12;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(angle) * innerR, Math.sin(angle) * innerR);
+        ctx.lineTo(Math.cos(angle) * outerR, Math.sin(angle) * outerR);
+        ctx.strokeStyle = i % 3 === 0 ? '#4da6ff' : '#2a3a55';
+        ctx.lineWidth = i % 3 === 0 ? 1.5 : 0.8;
+        ctx.stroke();
+
+        // Numbers
+        if (i % 3 === 0) {
+          const val = inst.min + (inst.max - inst.min) * (i / tickCount);
+          const numR = r - 26;
+          ctx.font = '9px ' + getComputedStyle(document.body).fontFamily.replace('system-ui', 'sans-serif');
+          ctx.fillStyle = '#8ba0b8';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(
+            inst.max > 1000 ? (val / 1000).toFixed(0) + 'K' : Math.round(val),
+            Math.cos(angle) * numR, Math.sin(angle) * numR
+          );
+        }
+      }
+
+      // Needle
+      const ratio = (inst.val - inst.min) / (inst.max - inst.min);
+      const angle = ratio * Math.PI * 1.5 - Math.PI * 0.75 - Math.PI / 2;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(angle) * (r - 30), Math.sin(angle) * (r - 30));
+      ctx.strokeStyle = '#f0a040';
+      ctx.lineWidth = 2;
+      ctx.shadowColor = 'rgba(240,160,64,0.5)';
+      ctx.shadowBlur = 6;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Center
+      ctx.beginPath();
+      ctx.arc(0, 0, 6, 0, Math.PI * 2);
+      ctx.fillStyle = '#1a2a3a';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(0, 0, 3, 0, Math.PI * 2);
+      ctx.fillStyle = '#f0a040';
+      ctx.fill();
+
+      // Value label
+      ctx.font = 'bold 11px monospace';
+      ctx.fillStyle = '#e2e8f0';
+      ctx.textAlign = 'center';
+      ctx.fillText(String(inst.val), 0, r - 48);
+      ctx.font = '7px monospace';
+      ctx.fillStyle = '#5a6e84';
+      ctx.fillText(inst.unit, 0, r - 38);
+
+      // Label
+      ctx.font = '8px sans-serif';
+      ctx.fillStyle = '#8ba0b8';
+      ctx.fillText(inst.label, 0, r + 22);
+      ctx.restore();
+    }
+
+    /* --- Draw attitude indicator --- */
+    function drawAttitude(cx, cy, r, inst, brightness) {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.globalAlpha = brightness;
+
+      // Background clipped to circle
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.clip();
+
+      // Sky/Ground split rotated
+      const pitch = inst.val2 || 2;
+      ctx.save();
+      ctx.rotate(pitch * Math.PI / 180 * 0.5);
+
+      // Sky
+      ctx.fillStyle = '#1a4a8a';
+      ctx.fillRect(-r * 2, -r * 2, r * 4, r * 2 + (inst.val || 0) * 3);
+      // Ground
+      ctx.fillStyle = '#5a3a20';
+      ctx.fillRect(-r * 2, r * 2 + (inst.val || 0) * 3, r * 4, r * 2);
+
+      // Horizon line
+      const hY = (inst.val || 0) * 3;
+      ctx.beginPath();
+      ctx.moveTo(-r, hY);
+      ctx.lineTo(r, hY);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Pitch marks
+      for (let p = -20; p <= 20; p += 5) {
+        const py = hY - p * 3;
+        ctx.beginPath();
+        ctx.moveTo(-16, py);
+        ctx.lineTo(16, py);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+        if (p !== 0) {
+          ctx.font = '7px monospace';
+          ctx.fillStyle = '#ffffff';
+          ctx.textAlign = 'center';
+          ctx.fillText(String(Math.abs(p)), 0, py - 3);
+        }
+      }
+      ctx.restore();
+
+      // Border
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.strokeStyle = '#3a5a7a';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      // Fixed aircraft symbol
+      ctx.strokeStyle = '#f0a040';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-30, 0); ctx.lineTo(-8, 0);
+      ctx.moveTo(30, 0); ctx.lineTo(8, 0);
+      ctx.moveTo(0, -15); ctx.lineTo(0, 0);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(0, 0, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#f0a040';
+      ctx.fill();
+
+      ctx.font = '8px sans-serif';
+      ctx.fillStyle = '#8ba0b8';
+      ctx.textAlign = 'center';
+      ctx.fillText(inst.label, 0, r + 22);
+      ctx.restore();
+    }
+
+    /* --- Draw HSI --- */
+    function drawHSI(cx, cy, r, inst, brightness) {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.globalAlpha = brightness;
+
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fillStyle = '#080c14';
+      ctx.fill();
+      ctx.strokeStyle = '#2a3a55';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Compass rose
+      const hdg = inst.val || 245;
+      ctx.save();
+      ctx.rotate(-hdg * Math.PI / 180);
+
+      for (let d = 0; d < 360; d += 5) {
+        const angle = d * Math.PI / 180;
+        const ir = d % 10 === 0 ? r - 8 : r - 12;
+        ctx.beginPath();
+        ctx.moveTo(Math.sin(angle) * ir, -Math.cos(angle) * ir);
+        ctx.lineTo(Math.sin(angle) * (r - 4), -Math.cos(angle) * (r - 4));
+        ctx.strokeStyle = d % 30 === 0 ? '#4da6ff' : d % 10 === 0 ? '#4a6a8a' : '#2a3a55';
+        ctx.lineWidth = d % 10 === 0 ? 1.2 : 0.4;
+        ctx.stroke();
+      }
+
+      // Cardinal directions
+      const cards = ['N','E','S','W'];
+      const dirs = [0, 90, 180, 270];
+      for (let i = 0; i < 4; i++) {
+        const angle = dirs[i] * Math.PI / 180;
+        ctx.font = 'bold 14px monospace';
+        ctx.fillStyle = '#4da6ff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(
+          cards[i],
+          Math.sin(angle) * (r - 22),
+          -Math.cos(angle) * (r - 22)
+        );
+      }
+      ctx.restore();
+
+      // Lubber line (top)
+      ctx.strokeStyle = '#f0a040';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, -r + 6);
+      ctx.lineTo(0, -r + 22);
+      ctx.stroke();
+      // heading value
+      ctx.font = 'bold 13px monospace';
+      ctx.fillStyle = '#f0a040';
+      ctx.textAlign = 'center';
+      ctx.fillText(String(hdg) + '°', 0, r - 20);
+
+      ctx.font = '8px sans-serif';
+      ctx.fillStyle = '#8ba0b8';
+      ctx.fillText(inst.label, 0, r + 22);
+      ctx.restore();
+    }
+
+    /* --- Draw bar gauge --- */
+    function drawBar(x, y, w, h, inst, brightness) {
+      ctx.save();
+      ctx.globalAlpha = brightness;
+      ctx.translate(x, y);
+
+      // Background
+      ctx.fillStyle = '#080c14';
+      ctx.fillRect(0, 0, w, h);
+      ctx.strokeStyle = '#2a3a55';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(0, 0, w, h);
+
+      // Scale marks
+      ctx.strokeStyle = '#1e2d45';
+      ctx.lineWidth = 0.5;
+      for (let i = 0; i <= 10; i++) {
+        const yPos = h - (i / 10) * h;
+        ctx.beginPath();
+        ctx.moveTo(w - 12, yPos);
+        ctx.lineTo(w, yPos);
+        ctx.stroke();
+        if (i % 2 === 0 && i < 10) {
+          const val = inst.min + (inst.max - inst.min) * (i / 10);
+          ctx.font = '6px monospace';
+          ctx.fillStyle = '#5a6e84';
+          ctx.textAlign = 'right';
+          ctx.fillText(
+            inst.max > 1000 ? (val/1000).toFixed(def(val/1000))+'K' : Math.round(val).toString(),
+            w - 15, yPos + 2
+          );
+        }
+      }
+
+      // Fill bar
+      const ratio = (inst.val - inst.min) / (inst.max - inst.min);
+      const barH = (h - 4) * ratio;
+      const barY = h - 2 - barH;
+      const grad = ctx.createLinearGradient(0, h, 0, 0);
+      grad.addColorStop(0, '#3bcc7d');
+      grad.addColorStop(1, '#00d4aa');
+      ctx.fillStyle = grad;
+      ctx.fillRect(2, barY, w - 20, barH);
+
+      // Value
+      ctx.font = 'bold 10px monospace';
+      ctx.fillStyle = '#e2e8f0';
+      ctx.textAlign = 'center';
+      ctx.fillText(String(inst.val), w / 2 - 10, Math.max(barY - 4, 12));
+
+      // Label
+      ctx.font = '8px sans-serif';
+      ctx.fillStyle = '#8ba0b8';
+      ctx.textAlign = 'center';
+      ctx.fillText(inst.label, w / 2 - 10, h + 14);
+      ctx.restore();
+    }
+
+    /* --- Draw flap/gear indicator --- */
+    function drawIndicator(x, y, w, h, inst, brightness) {
+      ctx.save();
+      ctx.globalAlpha = brightness;
+      ctx.translate(x, y);
+
+      ctx.fillStyle = '#080c14';
+      ctx.fillRect(0, 0, w, h);
+      ctx.strokeStyle = '#2a3a55';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(0, 0, w, h);
+
+      const steps = inst.type === 'flap' ? [0, 5, 10, 15, 20, 25, 30] : [0, 0, 0, 1, 0, 1, 1];
+      const labels = inst.type === 'flap' ? ['UP','5','10','15','20','25','30'] : ['UP','','OFF','','','','DN'];
+
+      for (let i = 0; i < steps.length; i++) {
+        const yPos = 6 + i * (h - 16) / (steps.length - 1);
+        ctx.font = '6px monospace';
+        ctx.fillStyle = '#5a6e84';
+        ctx.textAlign = 'center';
+        ctx.fillText(labels[i], w / 2, yPos);
+      }
+
+      // Current position
+      const ratio = inst.val / (inst.type === 'flap' ? 30 : 1);
+      const dotY = 6 + (1 - ratio) * (h - 16);
+      ctx.beginPath();
+      ctx.arc(w / 2, dotY, 5, 0, Math.PI * 2);
+      ctx.fillStyle = inst.type === 'gear' ? (inst.val === 1 ? '#3bcc7d' : '#f04650') : '#00d4aa';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      ctx.font = '8px sans-serif';
+      ctx.fillStyle = '#8ba0b8';
+      ctx.textAlign = 'center';
+      ctx.fillText(inst.label, w / 2, h + 14);
+      ctx.restore();
+    }
+
+    function def(v) { return v === Math.round(v) ? 0 : 1; }
+
+    /* --- Frame counter & detection boxes --- */
+    let frameCount = 0;
+    const detectionBoxesEl = [];
+    function clearDetectionBoxes() {
+      detectionBoxesEl.forEach(el => el.remove());
+      detectionBoxesEl.length = 0;
+    }
+
+    function addDetectionBox(inst, x, y, w, h, confidence) {
+      const panel = $('#cockpitPanel');
+      const rect = $('#cockpitScene').getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      const offsetX = rect.left - panelRect.left;
+      const offsetY = rect.top - panelRect.top;
+
+      const px = offsetX + x * rect.width;
+      const py = offsetY + y * rect.height;
+      const pw = w * rect.width;
+      const ph = h * rect.height;
+
+      const box = document.createElement('div');
+      box.className = 'det-box' + (inst.type === 'dial' || inst.type === 'attitude' || inst.type === 'hsi' ? ' confident' : '');
+      box.style.left = px + 'px';
+      box.style.top = py + 'px';
+      box.style.width = pw + 'px';
+      box.style.height = ph + 'px';
+      box.dataset.label = inst.label + ' · ' + String(inst.val) + inst.unit;
+      panel.appendChild(box);
+      detectionBoxesEl.push(box);
+    }
+
+    /* --- Main draw --- */
+    function drawAll() {
+      resizeCanvas();
+      clearDetectionBoxes();
+
+      const scene = scenes[currentScene];
+      const brightness = scene.instBrightness * (1 - instrumentFadeLevel);
+
+      // Regenerate clouds if needed
+      if (clouds.length === 0) generateClouds(canvasW, canvasH);
+
+      // Draw dynamic sky background
+      drawSkyBackground();
+
+      // Update cloud positions
+      clouds.forEach(c => {
+        c.x += c.speed;
+        if (c.x > canvasW + c.w) { c.x = -c.w; c.y = rand(canvasH * 0.02, canvasH * 0.38); }
+        if (c.x < -c.w * 2) { c.x = canvasW + c.w; c.y = rand(canvasH * 0.02, canvasH * 0.38); }
+      });
+
+      // === FLIGHT MODEL UPDATE (once per frame) ===
+      frameCount++;
+      // Apply head tracking as control input to flight state
+      if (headTracking && isCalibrated && faceDetected) {
+        flightState.pitch += (targetPitch - flightState.pitch) * 0.18;
+        flightState.roll += (targetRoll - flightState.roll) * 0.18;
+      }
+      // Run flight physics + training tasks
+      updateFlightModel(DT);
+      updateTraining();
+      // Sync all instruments from flight state
+      syncInstruments();
+
+      // Draw instruments on the panel area
+      instruments.forEach(inst => {
+        const rx = inst.x, ry = inst.y, rw = inst.w, rh = inst.h;
+        const px = rx * canvasW, py = ry * canvasH;
+        const pw = rw * canvasW, ph = rh * canvasH;
+
+        if (inst.type === 'dial') {
+          const r = Math.min(pw, ph) / 2;
+          drawDial(px + pw / 2, py + ph / 2, r, inst, brightness);
+          addDetectionBox(inst, rx - 0.01, ry - 0.01, rw + 0.02, rh + 0.02, 0.95 + Math.random() * 0.05);
+        } else if (inst.type === 'attitude') {
+          const r = Math.min(pw, ph) / 2;
+          drawAttitude(px + pw / 2, py + ph / 2, r, inst, brightness);
+          addDetectionBox(inst, rx - 0.01, ry - 0.01, rw + 0.02, rh + 0.02, 0.95 + Math.random() * 0.05);
+        } else if (inst.type === 'hsi') {
+          const r = Math.min(pw, ph) / 2;
+          drawHSI(px + pw / 2, py + ph / 2, r, inst, brightness);
+          addDetectionBox(inst, rx - 0.01, ry - 0.01, rw + 0.02, rh + 0.02, 0.95 + Math.random() * 0.05);
+        } else if (inst.type === 'bar') {
+          drawBar(px, py, pw, ph, inst, brightness);
+          addDetectionBox(inst, rx - 0.01, ry - 0.01, rw + 0.02, rh + 0.02, 0.95 + Math.random() * 0.05);
+        } else if (inst.type === 'flap' || inst.type === 'gear') {
+          drawIndicator(px, py, pw, ph, inst, brightness);
+          addDetectionBox(inst, rx - 0.005, ry - 0.005, rw + 0.01, rh + 0.01, 0.95 + Math.random() * 0.05);
+        }
+      });
+
+      // Update sky drift based on attitude indicator
+      const ai = instruments.find(i => i.id === 'ai');
+      const hsi = instruments.find(i => i.id === 'hsi');
+      if (ai && hsi) {
+        // Pitch affects vertical sky position
+        const targetDriftY = -ai.val * canvasH * 0.018;
+        skyDriftY += (targetDriftY - skyDriftY) * 0.08;
+
+        // Roll affects sky bank
+        const targetBank = ai.val2 * 0.015;
+        skyBank += (targetBank - skyBank) * 0.06;
+
+        // Heading changes cause slow horizontal drift
+        const hdgRad = (hsi.val - 245) * 0.0003;
+        skyDriftX += (hdgRad * canvasW - skyDriftX) * 0.02;
+      }
+
+      // Turbulence adds jitter
+      if (currentScene === 'turbulence') {
+        skyDriftY += (Math.random() - 0.5) * canvasH * 0.003;
+        skyBank += (Math.random() - 0.5) * 0.015;
+      }
+
+      requestAnimationFrame(() => setTimeout(drawAll, 42)); // ~24fps
+    }
+
+    /* ============ UPDATE METRICS ============ */
+    function updateMetrics() {
+      const lat = randInt(19, 25);
+      const acc = 99.0 + Math.random() * 0.8;
+      const robust = 98.2 + Math.random() * 1.2;
+      $('#metricLatency').textContent = lat + 'ms';
+      $('#metricAccuracy').textContent = acc.toFixed(1) + '%';
+      $('#metricRegions').textContent = randInt(5, 6);
+      $('#metricRobustness').textContent = robust.toFixed(1) + '%';
+    }
+    setInterval(updateMetrics, 2000);
+    updateMetrics();
+
+    /* ============ REGION ACTIVE TOGGLING ============ */
+    setInterval(() => {
+      const items = $$('.region-item');
+      const activeCount = randInt(3, 6);
+      items.forEach((item, i) => {
+        if (i < activeCount) {
+          item.classList.add('active');
+          const stat = item.querySelector('.ri-stat');
+          const hz = randInt(12, 30);
+          stat.textContent = hz + 'Hz';
+          stat.style.color = hz > 20 ? 'var(--accent-cyan)' : hz > 15 ? 'var(--accent-green)' : 'var(--accent-amber)';
+        } else {
+          item.classList.remove('active');
+          item.querySelector('.ri-stat').style.color = 'var(--text-muted)';
+        }
+      });
+    }, 3000);
+
+    /* ============ ENVIRONMENT BARS UPDATE ============ */
+    setInterval(() => {
+      const bars = $$('.env-item .ev-bar');
+      const vals = $$('.env-item .ev-val');
+      const scenarios = ['正常光照', '低光照', '振动环境', '部分遮挡', '强反光', '烟雾/雾霾'];
+      bars.forEach((bar, i) => {
+        const val = 90 + Math.random() * 10;
+        bar.style.width = val.toFixed(1) + '%';
+        vals[i].textContent = val.toFixed(1) + '%';
+        bar.className = 'ev-bar ' + (val > 97 ? 'excellent' : val > 94 ? 'good' : 'moderate');
+      });
+    }, 4000);
+
+    /* ============ ATTENTION DISPLAY ============ */
+    function drawAttentionDonut() {
+      const canvas = $('#attnDonut');
+      if (!canvas) return;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const w = rect.width, h = rect.height;
+      const cx = w / 2, cy = h / 2;
+      const r = Math.min(w, h) / 2 - 6;
+
+      ctx.clearRect(0, 0, w, h);
+
+      // Calculate ratios
+      const total = outsideTimeMs + Object.values(instAttentionTime).reduce((a, b) => a + b, 0);
+      const outsideRatio = total > 0 ? outsideTimeMs / total : 0.65;
+      const insideRatio = Math.max(0, 1 - outsideRatio);
+
+      // Draw donut
+      const lineW = 10;
+      // Track ring
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, Math.PI * 1.5, Math.PI * 1.5 + Math.PI * 2);
+      ctx.strokeStyle = '#1a2a3a';
+      ctx.lineWidth = lineW;
+      ctx.stroke();
+
+      // Outside segment (cyan)
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * outsideRatio);
+      ctx.strokeStyle = '#00d4aa';
+      ctx.lineWidth = lineW;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      // Inside segment (green) — starts where outside ends
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, -Math.PI / 2 + Math.PI * 2 * outsideRatio, -Math.PI / 2 + Math.PI * 2);
+      ctx.strokeStyle = '#3bcc7d';
+      ctx.lineWidth = lineW;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      // Center text
+      ctx.font = 'bold 14px monospace';
+      ctx.fillStyle = '#e2e8f0';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(Math.round(outsideRatio * 100) + '%', cx, cy);
+    }
+
+    function updateAttentionDisplay() {
+      if (!headTracking || !isCalibrated) {
+        // Show placeholder data when not tracking
+        $('#attnOutside').textContent = '--%';
+        $('#attnInside').textContent = '--%';
+        $('#attnBadge').textContent = '待追踪';
+        $('#attnBadge').className = 'ps-badge warning';
+        drawAttentionPlaceholder();
+        return;
+      }
+
+      $('#attnBadge').textContent = '追踪中';
+      $('#attnBadge').className = 'ps-badge online';
+
+      const total = outsideTimeMs + Object.values(instAttentionTime).reduce((a, b) => a + b, 0);
+      if (total < 500) return; // Not enough data yet
+
+      const outsideRatio = outsideTimeMs / total;
+      const insideRatio = 1 - outsideRatio;
+      $('#attnOutside').textContent = Math.round(outsideRatio * 100) + '%';
+      $('#attnInside').textContent = Math.round(insideRatio * 100) + '%';
+
+      drawAttentionDonut();
+
+      // Update instrument attention list
+      const list = $('#instAttnList');
+      const totalInside = total - outsideTimeMs;
+      if (totalInside < 200) return;
+
+      const now = Date.now();
+      let html = '';
+      instruments.forEach(inst => {
+        const time = instAttentionTime[inst.id] || 0;
+        const pct = totalInside > 0 ? time / totalInside : 0;
+        const lastCheck = instLastCheck[inst.id];
+        const sinceSec = lastCheck ? Math.round((now - lastCheck) / 1000) : 99;
+        const cls = pct > 0.15 ? 'hot' : (sinceSec > 10 && sinceSec < 99 ? 'warn' : '');
+        html += '<div class="inst-attn-row ' + cls + '">';
+        html += '<span class="ia-name">' + inst.label + '</span>';
+        html += '<span class="ia-bar-wrap"><span class="ia-bar" style="width:' + Math.round(pct * 100) + '%"></span></span>';
+        html += '<span class="ia-pct">' + Math.round(pct * 100) + '%</span>';
+        html += '<span class="ia-since">' + (lastCheck ? sinceSec + 's前' : '--') + '</span>';
+        html += '</div>';
+      });
+      list.innerHTML = html;
+    }
+
+    function drawAttentionPlaceholder() {
+      const canvas = $('#attnDonut');
+      if (!canvas) return;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const w = rect.width, h = rect.height;
+      ctx.clearRect(0, 0, w, h);
+      const cx = w / 2, cy = h / 2, r = Math.min(w, h) / 2 - 6;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.strokeStyle = '#1a2a3a';
+      ctx.lineWidth = 10;
+      ctx.stroke();
+      ctx.font = '11px monospace';
+      ctx.fillStyle = '#5a6e84';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('等待', cx, cy);
+    }
+
+    // Build initial instrument attention list
+    (function initAttnList() {
+      let html = '';
+      instruments.forEach(inst => {
+        html += '<div class="inst-attn-row">';
+        html += '<span class="ia-name">' + inst.label + '</span>';
+        html += '<span class="ia-bar-wrap"><span class="ia-bar" style="width:0%"></span></span>';
+        html += '<span class="ia-pct">0%</span>';
+        html += '<span class="ia-since">--</span>';
+        html += '</div>';
+      });
+      $('#instAttnList').innerHTML = html;
+    })();
+
+    setInterval(updateAttentionDisplay, 1000);
+    drawAttentionPlaceholder();
+
+    /* ============ LATENCY SPARKLINE ============ */
+    const sparkCanvas = $('#latencySpark');
+    const sparkCtx = sparkCanvas.getContext('2d');
+    const history = new Array(60).fill(22);
+
+    function drawSparkline() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const rect = sparkCanvas.getBoundingClientRect();
+      sparkCanvas.width = rect.width * dpr;
+      sparkCanvas.height = rect.height * dpr;
+      sparkCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      const w = rect.width, h = rect.height;
+      sparkCtx.clearRect(0, 0, w, h);
+
+      // Grid
+      sparkCtx.strokeStyle = 'rgba(30,45,70,0.3)';
+      sparkCtx.lineWidth = 0.5;
+      for (let i = 0; i < 3; i++) {
+        const y = h * (i + 1) / 4;
+        sparkCtx.beginPath();
+        sparkCtx.moveTo(0, y); sparkCtx.lineTo(w, y);
+        sparkCtx.stroke();
+      }
+
+      // Line
+      sparkCtx.beginPath();
+      const stepX = w / (history.length - 1);
+      const minV = 18, maxV = 28;
+      history.forEach((v, i) => {
+        const sx = i * stepX;
+        const sy = h - ((v - minV) / (maxV - minV)) * (h - 8) - 4;
+        if (i === 0) sparkCtx.moveTo(sx, sy);
+        else sparkCtx.lineTo(sx, sy);
+      });
+      sparkCtx.strokeStyle = '#00d4aa';
+      sparkCtx.lineWidth = 1.8;
+      sparkCtx.shadowColor = 'rgba(0,212,170,0.4)';
+      sparkCtx.shadowBlur = 8;
+      sparkCtx.stroke();
+      sparkCtx.shadowBlur = 0;
+
+      // Fill
+      sparkCtx.lineTo((history.length - 1) * stepX, h);
+      sparkCtx.lineTo(0, h);
+      sparkCtx.closePath();
+      const fillGrad = sparkCtx.createLinearGradient(0, 0, 0, h);
+      fillGrad.addColorStop(0, 'rgba(0,212,170,0.15)');
+      fillGrad.addColorStop(1, 'rgba(0,212,170,0)');
+      sparkCtx.fillStyle = fillGrad;
+      sparkCtx.fill();
+    }
+
+    function updateSparkline() {
+      history.shift();
+      history.push(rand(19, 26));
+      drawSparkline();
+    }
+    setInterval(updateSparkline, 1500);
+    drawSparkline();
+
+    /* ============ ROBOT METRICS UPDATE ============ */
+    setInterval(() => {
+      const metrics = $$('.ro-metric');
+      metrics.forEach(m => {
+        const v = rand(3.5, 9.5);
+        m.textContent = v.toFixed(1) + 'ms';
+        m.style.color = v < 6 ? 'var(--accent-green)' : v < 8 ? 'var(--accent-amber)' : 'var(--accent-red)';
+      });
+    }, 2000);
+
+    /* ============ RESIZE & INIT ============ */
+    window.addEventListener('resize', () => {
+      resizeCanvas();
+      generateClouds(canvasW, canvasH);
+      skyDriftX = 0; skyDriftY = 0; skyBank = 0;
+      drawSparkline();
+    });
+
+    // Start
+    resizeCanvas();
+    generateClouds(canvasW, canvasH);
+    drawAll();
+
+    /* === KEYBOARD === */
+    document.addEventListener('keydown', e => {
+      // Scene switch: 1-4
+      const keys = { '1': 'day', '2': 'night', '3': 'turbulence', '4': 'lowvis' };
+      const scene = keys[e.key];
+      if (scene) {
+        currentScene = scene;
+        skyDriftX = 0; skyDriftY = 0; skyBank = 0;
+        generateClouds(canvasW, canvasH);
+        $$('.scene-tab').forEach(t => t.classList.remove('active'));
+        $(`.scene-tab[data-scene="${scene}"]`).classList.add('active');
+      }
+      // Space key: recalibrate head tracking
+      if (e.code === 'Space' && headTracking) {
+        e.preventDefault();
+        startCalibration();
+      }
+      // Throttle: W=up S=down, ArrowUp/ArrowDown
+      if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        flightState.throttle = Math.min(1, flightState.throttle + 0.08);
+      }
+      if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        flightState.throttle = Math.max(0.1, flightState.throttle - 0.08);
+      }
+      // Training task keys: Q/E to cycle tasks
+      if (e.key === 'q' || e.key === 'Q') {
+        const tasks = ['none', 'altitude', 'turn', 'approach', 'external'];
+        const idx = tasks.indexOf(activeTraining);
+        startTraining(tasks[(idx - 1 + tasks.length) % tasks.length]);
+      }
+      if (e.key === 'e' || e.key === 'E') {
+        const tasks = ['none', 'altitude', 'turn', 'approach', 'external'];
+        const idx = tasks.indexOf(activeTraining);
+        startTraining(tasks[(idx + 1) % tasks.length]);
+      }
+      // R key: restart current training task
+      if ((e.key === 'r' || e.key === 'R') && activeTraining !== 'none') {
+        e.preventDefault();
+        resetTaskState(activeTraining);
+      }
+    });
+
+    console.log('具身智能飞行员视觉仪表识别系统 v4.0 — 飞行训练平台已就绪');
+    console.log('按 1-4 切换场景：白昼/夜间/湍流/低能见度');
+    console.log('W/S 或 ↑↓：控制油门 | 头部追踪：控制姿态 | 空格：重新校准');
+    console.log('训练任务：自由飞行 | 保持高度 | 标准转弯 | 仪表进近 | 外视强化 (Q/E 切换, R 重新开始)');
+    console.log('注意力评分：过度注视座舱会降低训练进度，窗外扫视加分');
+    console.log('教练纠偏：连续注视仪表>8秒自动弹出提示');
+  })();
+</script>
+
+</body>
+</html>
