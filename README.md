@@ -49,4 +49,4 @@ python -m http.server 3000
 ## 浏览器兼容
 
 推荐使用 Chrome 浏览器以获得完整的头部追踪功能。
-联系邮箱：heiak@foxmail.com 抖音 快手 小红书 视频号 ——黑AK
+联系邮箱：heiak@foxmail.com 
